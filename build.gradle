@@ -21,6 +21,10 @@ repositories {
     }
 }
 
+dependencyLocking {
+    lockAllConfigurations()
+}
+
 final targetJavaVersion = JavaVersion.VERSION_21
 
 java {
@@ -49,6 +53,10 @@ dependencies {
     annotationProcessor group: "io.kestra", name: "processor", version: kestraVersion
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
     compileOnly group: "io.kestra", name: "script", version: kestraVersion
+
+    // Kubernetes and Tekton
+    implementation "io.kestra.plugin:plugin-kubernetes-lib:1.1.5"
+    implementation "io.fabric8:tekton-client:7.9.0"
 }
 
 
@@ -87,6 +95,7 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter-engine"
     testImplementation "org.hamcrest:hamcrest"
     testImplementation "org.hamcrest:hamcrest-library"
+    testImplementation "io.fabric8:kubernetes-server-mock:7.9.0"
 }
 
 /**********************************************************************************************************************\

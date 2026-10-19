@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Tekton PipelineRun">
+  <path fill="#2b2b2b" d="M8 8h48v10H38v38H26V18H8z"/>
+  <path fill="#f58220" d="M8 26h12v12H8zM44 26h12v12H44zM26 8h12v12H26z"/>
+</svg>

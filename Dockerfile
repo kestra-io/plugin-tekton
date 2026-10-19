@@ -1,4 +1,9 @@
-# for dev purposes only
-FROM kestra/kestra:latest
+FROM eclipse-temurin:21-jdk-jammy AS build
 
-# COPY build/libs/* /app/plugins/ # this is already handled in docker-compose.yml
+WORKDIR /workspace
+COPY . .
+RUN ./gradlew shadowJar --no-daemon
+
+FROM kestra/kestra:1.3.39
+
+COPY --from=build /workspace/build/libs/*.jar /app/plugins/

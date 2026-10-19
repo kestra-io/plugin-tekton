@@ -37,22 +37,58 @@
 
 # Kestra Tekton Plugin
 
-## Why
-
-- What user problem does this solve? Teams need a concrete starting point for building and validating new Kestra plugins without recreating the same project scaffolding from scratch.
-- Why would a team adopt this plugin in a workflow? It gives plugin authors a ready-made reference repo they can adapt alongside their own build, test, and publishing workflow.
-- What operational/business outcome does it enable? It shortens plugin delivery time, reduces setup mistakes, and makes internal or partner plugin development more repeatable.
-
 ## What
 
-- Provides plugin components under `io.kestra.plugin.tekton`.
-- Includes classes such as `Example`, `Trigger`.
+The Tekton plugin lets Kestra orchestrate Tekton resources through the Kubernetes API. It supports:
+
+- `io.kestra.plugin.tekton.pipelinerun.Create`, `Get`, `List`, `Cancel`, and `Trigger`;
+- `io.kestra.plugin.tekton.taskrun.Create` and `Get`;
+- kubeconfig, in-cluster service-account, and explicit Kubernetes API token authentication;
+- optional waiting, timeout handling, typed status/results, and cancellation on task kill.
+
+The plugin uses the Fabric8 Tekton client and Tekton `v1` resources. Tekton must already be installed in the target Kubernetes cluster.
+
+## Quick example
+
+```yaml
+id: tekton_build
+namespace: company.team
+
+tasks:
+  - id: run
+    type: io.kestra.plugin.tekton.pipelinerun.Create
+    namespace: ci
+    connection:
+      masterUrl: "{{ secret('K8S_MASTER_URL') }}"
+      oauthToken: "{{ secret('K8S_TOKEN') }}"
+    pipelineRef: build-and-test
+    wait: true
+    timeout: PT30M
+```
+
+When `connection` is omitted, Fabric8 resolves credentials from the environment, kubeconfig, or in-cluster service account. Use `caCertData` when the API server needs a custom CA certificate.
 
 ## Running Kestra locally with this plugin
 
 1. Build the shadow JAR: `./gradlew shadowJar`. The output lands in `build/libs/`.
-2. Run `docker compose up`. `docker-compose.yml` builds `kestra/kestra:latest` and mounts `build/libs/` to `/app/plugins/`, so Kestra picks up the jar on startup.
+2. Run `docker compose up`. The compose file mounts `build/libs/` to `/app/plugins/`, so Kestra picks up the jar on startup.
 3. Kestra UI is available at [localhost:8080](http://localhost:8080).
+
+## Development checks
+
+Java 21 and the Gradle wrapper are pinned in the repository. Run the complete check suite with:
+
+```bash
+make test
+```
+
+Build the plugin artifact with:
+
+```bash
+make build
+```
+
+The unit tests use deterministic in-memory/model coverage. A live Kubernetes/Tekton cluster is required to exercise the actual API calls.
 
 ### Plugins folder gotcha
 
