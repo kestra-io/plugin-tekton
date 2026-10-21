@@ -12,6 +12,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.tekton.model.TektonOutput;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,9 +79,28 @@ public final class TektonRunSupport {
         return values.entrySet().stream().map(entry -> {
             Param param = new Param();
             param.setName(entry.getKey());
-            param.setValue(new ParamValue(String.valueOf(entry.getValue())));
+            param.setValue(paramValue(entry.getValue()));
             return param;
         }).toList();
+    }
+
+    private static ParamValue paramValue(Object value) {
+        if (value instanceof Map<?, ?> object) {
+            Map<String, String> values = new LinkedHashMap<>();
+            object.forEach((key, item) -> values.put(String.valueOf(key), String.valueOf(item)));
+            return new ParamValue(values);
+        }
+        if (value instanceof Collection<?> collection) {
+            return new ParamValue(collection.stream().map(String::valueOf).toList());
+        }
+        if (value != null && value.getClass().isArray()) {
+            List<String> values = new ArrayList<>();
+            for (int i = 0; i < java.lang.reflect.Array.getLength(value); i++) {
+                values.add(String.valueOf(java.lang.reflect.Array.get(value, i)));
+            }
+            return new ParamValue(values);
+        }
+        return new ParamValue(String.valueOf(value));
     }
 
     private static List<WorkspaceBinding> workspaces(List<Object> values) {

@@ -11,6 +11,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.models.triggers.AbstractTrigger;
 import io.kestra.core.models.triggers.PollingTriggerInterface;
 import io.kestra.core.models.triggers.TriggerContext;
+import io.kestra.core.models.triggers.TriggerOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.kv.KVMetadata;
@@ -63,7 +64,7 @@ import java.util.Optional;
             """
     )
 )
-public class Trigger extends AbstractTrigger implements PollingTriggerInterface {
+public class Trigger extends AbstractTrigger implements PollingTriggerInterface, TriggerOutput<io.kestra.plugin.tekton.model.TektonOutput> {
     private static final String WATERMARK_KEY = "tekton-pipelinerun-watermark";
 
     @Schema(title = "Polling interval")
@@ -92,9 +93,12 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface 
     @Override
     public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext triggerContext) throws Exception {
         RunContext runContext = conditionContext.getRunContext();
-        String renderedNamespace = runContext.render(namespace).as(String.class).orElseThrow();
+        String renderedNamespace = runContext.render(namespace).as(String.class).orElse("default");
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
         List<PipelineRun> runs;
+        if (interval.isZero() || interval.isNegative()) {
+            throw new IllegalArgumentException("interval must be greater than PT0S");
+        }
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(
             connection, runContext, runContext.render(inheritClusterConfig).as(Boolean.class).orElse(true)
         )) {
@@ -106,12 +110,31 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface 
 
         List<PipelineRun> terminalRuns = runs.stream()
             .filter(this::terminal)
-            .sorted(Comparator.comparing(this::watermark).thenComparing(run -> run.getMetadata().getName()))
+            .sorted(Comparator.comparing((PipelineRun run) -> Instant.parse(watermark(run)))
+                .thenComparing(run -> run.getMetadata().getName()))
             .toList();
 
-        String watermarkKey = watermarkKey(triggerContext);
+        String watermarkKey = watermarkKey(triggerContext, runContext);
         KVStore store = runContext.namespaceKv(runContext.flowInfo().namespace());
-        Watermark watermark = read(store, watermarkKey);
+        Optional<Watermark> storedWatermark = read(store, watermarkKey);
+        if (storedWatermark.isEmpty()) {
+            PipelineRun latest = terminalRuns.isEmpty() ? null : terminalRuns.getLast();
+            if (latest != null) {
+                put(store, watermarkKey, latest);
+            } else {
+                store.put(
+                    watermarkKey,
+                    new KVValueAndMetadata(
+                        new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)),
+                        new Watermark(null, "1970-01-01T00:00:00Z")
+                    ),
+                    true
+                );
+            }
+            return Optional.empty();
+        }
+
+        Watermark watermark = storedWatermark.get();
         PipelineRun next = terminalRuns.stream()
             .filter(run -> newerThan(run, watermark))
             .findFirst()
@@ -121,11 +144,9 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface 
         }
 
         Watermark nextWatermark = new Watermark(next.getMetadata().getName(), watermark(next));
-        store.put(
-            watermarkKey,
-            new KVValueAndMetadata(new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)), nextWatermark),
-            true
-        );
+        store.put(watermarkKey, new KVValueAndMetadata(
+            new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)), nextWatermark
+        ), true);
         String status = status(next);
         Map<String, Object> triggerData = Map.of(
             "name", next.getMetadata().getName(),
@@ -159,15 +180,29 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface 
         return run.getMetadata().getCreationTimestamp();
     }
 
-    private Watermark read(KVStore store, String key) throws Exception {
+    private Optional<Watermark> read(KVStore store, String key) throws Exception {
         return store.getValue(key)
-            .map(value -> JacksonMapper.ofJson().convertValue(value.value(), Watermark.class))
-            .orElse(new Watermark(null, "1970-01-01T00:00:00Z"));
+            .map(value -> JacksonMapper.ofJson().convertValue(value.value(), Watermark.class));
     }
 
-    private String watermarkKey(TriggerContext triggerContext) {
+    private void put(KVStore store, String key, PipelineRun run) throws Exception {
+        store.put(
+            key,
+            new KVValueAndMetadata(
+                new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)),
+                new Watermark(run.getMetadata().getName(), watermark(run))
+            ),
+            true
+        );
+    }
+
+    private String watermarkKey(TriggerContext triggerContext, RunContext runContext) {
         String triggerId = triggerContext.getTriggerId() != null ? triggerContext.getTriggerId() : getId();
-        return WATERMARK_KEY + "-" + (triggerId == null ? "default" : triggerId);
+        String flowId = triggerContext.getFlowId();
+        if (flowId == null) {
+            flowId = runContext.flowInfo().id();
+        }
+        return WATERMARK_KEY + "-" + flowId + "-" + (triggerId == null ? "default" : triggerId);
     }
 
     private boolean newerThan(PipelineRun run, Watermark watermark) {

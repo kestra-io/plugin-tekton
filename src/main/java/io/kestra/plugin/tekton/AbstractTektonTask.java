@@ -62,4 +62,12 @@ public abstract class AbstractTektonTask extends Task {
     protected boolean renderInheritClusterConfig(RunContext runContext) throws Exception {
         return runContext.render(inheritClusterConfig).as(Boolean.class).orElse(true);
     }
+
+    protected Duration renderPollInterval(RunContext runContext) throws Exception {
+        Duration value = runContext.render(pollInterval).as(Duration.class).orElse(Duration.ofSeconds(5));
+        if (value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException("pollInterval must be greater than PT0S");
+        }
+        return value;
+    }
 }

@@ -21,10 +21,6 @@ repositories {
     }
 }
 
-dependencyLocking {
-    lockAllConfigurations()
-}
-
 final targetJavaVersion = JavaVersion.VERSION_21
 
 java {

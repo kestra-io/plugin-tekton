@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import io.fabric8.tekton.v1.ParamValue;
 import io.fabric8.tekton.client.TektonClient;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.serializers.JacksonMapper;
@@ -63,13 +64,23 @@ public final class TektonClientSupport {
             Object value = values.get("value");
             if (value != null) {
                 try {
-                    output.put(name, JacksonMapper.ofJson().writeValueAsString(value));
+                    output.put(name, resultValue(value));
                 } catch (JsonProcessingException e) {
                     output.put(name, String.valueOf(value));
                 }
             }
         }
         return output;
+    }
+
+    private static String resultValue(Object value) throws JsonProcessingException {
+        if (value instanceof String string) {
+            return string;
+        }
+        if (value instanceof ParamValue paramValue && "string".equals(paramValue.getType())) {
+            return paramValue.getStringVal();
+        }
+        return JacksonMapper.ofJson().writeValueAsString(value);
     }
 
     public record ClientHandle(KubernetesClient kubernetes, TektonClient tekton) implements AutoCloseable {

@@ -60,8 +60,13 @@ public class Cancel extends AbstractTektonTask implements RunnableTask<TektonOut
             if (pipelineRun.getSpec() == null) {
                 pipelineRun.setSpec(new io.fabric8.tekton.v1.PipelineRunSpec());
             }
-            pipelineRun.getSpec().setStatus("Cancelled");
-            PipelineRun cancelled = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace).resource(pipelineRun).replace();
+            PipelineRun cancelled = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace).withName(renderedName).edit(current -> {
+                if (current.getSpec() == null) {
+                    current.setSpec(new io.fabric8.tekton.v1.PipelineRunSpec());
+                }
+                current.getSpec().setStatus("Cancelled");
+                return current;
+            });
             var status = cancelled.getStatus();
             return TektonOutput.from(
                 cancelled.getMetadata(),

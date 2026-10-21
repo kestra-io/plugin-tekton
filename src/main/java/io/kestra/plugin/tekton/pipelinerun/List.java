@@ -50,25 +50,31 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
 
     @Schema(title = "Succeeded status", description = "Filter by the Tekton Succeeded condition: True, False, or Unknown.")
     @PluginProperty(group = "advanced")
-    private Property<String> status;
+    private Property<SucceededStatus> status;
 
     @Override
     public Output run(RunContext runContext) throws Exception {
         String renderedNamespace = renderNamespace(runContext);
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
-        String renderedStatus = status == null ? null : runContext.render(status).as(String.class).orElse(null);
+        SucceededStatus renderedStatus = status == null ? null : runContext.render(status).as(SucceededStatus.class).orElse(null);
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
             var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
             var runs = selector != null && !selector.isBlank()
                 ? operation.withLabelSelector(selector).list().getItems()
                 : operation.list().getItems();
             var items = runs.stream()
-                .filter(run -> renderedStatus == null || renderedStatus.equals(status(run)))
+                .filter(run -> renderedStatus == null || renderedStatus.toString().equals(status(run)))
                 .sorted(Comparator.comparing(run -> run.getMetadata().getName()))
                 .map(this::output)
                 .toList();
             return Output.builder().items(items).size(items.size()).build();
         }
+    }
+
+    public enum SucceededStatus {
+        True,
+        False,
+        Unknown
     }
 
     private String status(PipelineRun run) {
