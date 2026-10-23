@@ -51,7 +51,8 @@ public class Cancel extends AbstractTektonTask implements RunnableTask<TektonOut
     @Override
     public TektonOutput run(RunContext runContext) throws Exception {
         String renderedNamespace = renderNamespace(runContext);
-        String renderedName = runContext.render(name).as(String.class).orElseThrow();
+        String renderedName = runContext.render(name).as(String.class)
+            .orElseThrow(() -> new IllegalArgumentException("name must render to a non-empty string"));
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
             PipelineRun pipelineRun = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace).withName(renderedName).get();
             if (pipelineRun == null) {

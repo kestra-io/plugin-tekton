@@ -1,6 +1,7 @@
 package io.kestra.plugin.tekton.pipelinerun;
 
 import io.fabric8.tekton.v1.PipelineRun;
+import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
 import io.kestra.core.models.Label;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -20,6 +21,8 @@ import io.kestra.core.storages.kv.KVValueAndMetadata;
 import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.tekton.TektonClientSupport;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -72,6 +75,13 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
     @lombok.Builder.Default
     private final Duration interval = Duration.ofMinutes(1);
 
+    @Schema(title = "Maximum PipelineRuns per poll", description = "Bounds each Kubernetes list response. Use a labelSelector to keep trigger polling focused.")
+    @PluginProperty(group = "advanced")
+    @Min(1)
+    @Max(1000)
+    @lombok.Builder.Default
+    private final Property<Integer> limit = Property.ofValue(100);
+
     @Schema(title = "Kubernetes connection")
     @PluginProperty(group = "connection")
     private Connection connection;
@@ -95,6 +105,7 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         RunContext runContext = conditionContext.getRunContext();
         String renderedNamespace = runContext.render(namespace).as(String.class).orElse("default");
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
+        int renderedLimit = runContext.render(limit).as(Integer.class).orElse(100);
         List<PipelineRun> runs;
         if (interval.isZero() || interval.isNegative()) {
             throw new IllegalArgumentException("interval must be greater than PT0S");
@@ -103,9 +114,10 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             connection, runContext, runContext.render(inheritClusterConfig).as(Boolean.class).orElse(true)
         )) {
             var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
+            var options = new ListOptionsBuilder().withLimit((long) renderedLimit).build();
             runs = selector == null || selector.isBlank()
-                ? operation.list().getItems()
-                : operation.withLabelSelector(selector).list().getItems();
+                ? operation.list(options).getItems()
+                : operation.withLabelSelector(selector).list(options).getItems();
         }
 
         List<PipelineRun> terminalRuns = runs.stream()

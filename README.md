@@ -63,7 +63,7 @@ tasks:
       oauthToken: "{{ secret('K8S_TOKEN') }}"
     pipelineRef: build-and-test
     wait: true
-    timeout: PT30M
+    waitTimeout: PT30M
 ```
 
 When `connection` is omitted, Fabric8 resolves credentials from the environment, kubeconfig, or in-cluster service account. Use `caCertData` when the API server needs a custom CA certificate.
@@ -76,16 +76,16 @@ When `connection` is omitted, Fabric8 resolves credentials from the environment,
 
 ## Development checks
 
-Java 21 and the Gradle wrapper are pinned in the repository. Run the complete check suite with:
+Use Java 21 and the Gradle wrapper to run the complete check suite:
 
 ```bash
-make test
+./gradlew test lintPluginDocs build
 ```
 
-Build the plugin artifact with:
+Build the plugin artifact separately with:
 
 ```bash
-make build
+./gradlew shadowJar
 ```
 
 The unit tests use deterministic in-memory/model coverage. A live Kubernetes/Tekton cluster is required to exercise the actual API calls.

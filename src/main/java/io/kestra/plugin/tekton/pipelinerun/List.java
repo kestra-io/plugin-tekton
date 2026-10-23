@@ -1,6 +1,7 @@
 package io.kestra.plugin.tekton.pipelinerun;
 
 import io.fabric8.tekton.v1.PipelineRun;
+import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -11,6 +12,8 @@ import io.kestra.plugin.tekton.AbstractTektonTask;
 import io.kestra.plugin.tekton.TektonClientSupport;
 import io.kestra.plugin.tekton.model.TektonOutput;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -39,7 +42,7 @@ import java.util.Map;
                 type: io.kestra.plugin.tekton.pipelinerun.List
                 namespace: ci
                 labelSelector: tekton.dev/pipeline=build-and-test
-                status: False
+                status: "False"
             """
     )
 )
@@ -52,19 +55,28 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
     @PluginProperty(group = "advanced")
     private Property<SucceededStatus> status;
 
+    @Schema(title = "Maximum number of PipelineRuns to return", description = "Bounds the task output and Kubernetes list response.")
+    @PluginProperty(group = "advanced")
+    @Min(1)
+    @Max(1000)
+    @lombok.Builder.Default
+    private final Property<Integer> limit = Property.ofValue(100);
+
     @Override
     public Output run(RunContext runContext) throws Exception {
         String renderedNamespace = renderNamespace(runContext);
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
         SucceededStatus renderedStatus = status == null ? null : runContext.render(status).as(SucceededStatus.class).orElse(null);
+        int renderedLimit = runContext.render(limit).as(Integer.class).orElse(100);
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
             var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
+            var options = new ListOptionsBuilder().withLimit((long) renderedLimit).build();
             var runs = selector != null && !selector.isBlank()
-                ? operation.withLabelSelector(selector).list().getItems()
-                : operation.list().getItems();
+                ? operation.withLabelSelector(selector).list(options).getItems()
+                : operation.list(options).getItems();
             var items = runs.stream()
                 .filter(run -> renderedStatus == null || renderedStatus.toString().equals(status(run)))
-                .sorted(Comparator.comparing(run -> run.getMetadata().getName()))
+                .sorted(Comparator.comparing((PipelineRun run) -> run.getMetadata().getName()))
                 .map(this::output)
                 .toList();
             return Output.builder().items(items).size(items.size()).build();

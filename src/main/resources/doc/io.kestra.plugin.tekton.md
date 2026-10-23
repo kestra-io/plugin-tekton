@@ -20,7 +20,7 @@ Use `taskrun.Create` and `taskrun.Get` for single Tekton Tasks. `Create` support
 
 ### PipelineRun trigger
 
-`pipelinerun.Trigger` polls terminal PipelineRuns selected by `labelSelector`. It stores the last emitted run name and completion time in the namespace KV Store, so repeated polls do not emit the same run twice. The trigger exposes the run name, namespace, status, and completion time to the execution.
+`pipelinerun.Trigger` polls terminal PipelineRuns selected by `labelSelector`. Each poll is bounded by `limit` (100 by default); use a focused label selector for busy namespaces. It stores the last emitted run name and completion time in the namespace KV Store, so repeated polls do not emit the same run twice. The trigger exposes the run name, namespace, status, and completion time to the execution.
 
 ## Cluster requirements
 

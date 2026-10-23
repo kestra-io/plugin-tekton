@@ -56,7 +56,8 @@ public abstract class AbstractTektonTask extends Task {
     protected final Property<Duration> pollInterval = Property.ofValue(Duration.ofSeconds(5));
 
     protected String renderNamespace(RunContext runContext) throws Exception {
-        return runContext.render(namespace).as(String.class).orElseThrow();
+        return runContext.render(namespace).as(String.class)
+            .orElseThrow(() -> new IllegalArgumentException("namespace must render to a non-empty string"));
     }
 
     protected boolean renderInheritClusterConfig(RunContext runContext) throws Exception {

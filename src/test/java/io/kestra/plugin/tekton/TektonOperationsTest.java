@@ -82,7 +82,7 @@ class TektonOperationsTest {
         assertEquals("True", createdOutput.getStatus());
         assertTrue(server.takeRequest().getUtf8Body().contains("build-and-test"));
 
-        server.expect().get().withPath("/apis/tekton.dev/v1/namespaces/ci/pipelineruns")
+        server.expect().get().withPath("/apis/tekton.dev/v1/namespaces/ci/pipelineruns?limit=100")
             .andReturn(200, pipelineRunList(created)).once();
         List.Output listed = List.builder()
             .connection(connection)
@@ -154,9 +154,9 @@ class TektonOperationsTest {
         String firstPoll = pipelineRunList(first, second);
         String secondPoll = pipelineRunList(third, first, second);
         String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
-        server.expect().get().withPath(path).andReturn(200, firstPoll).once();
-        server.expect().get().withPath(path).andReturn(200, secondPoll).once();
-        server.expect().get().withPath(path).andReturn(200, secondPoll).once();
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, firstPoll).once();
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, secondPoll).once();
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, secondPoll).once();
 
         Flow flow = Flow.builder().id("flow").namespace("team").build();
         Trigger trigger = Trigger.builder()
@@ -187,7 +187,7 @@ class TektonOperationsTest {
     void triggerWatermarkIsIsolatedPerFlowAndTrigger() throws Exception {
         String run = pipelineRun("history", "2024-01-01T00:01:00Z", "True");
         String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
-        server.expect().get().withPath(path).andReturn(200, pipelineRunList(run)).times(2);
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, pipelineRunList(run)).times(2);
 
         Trigger trigger = Trigger.builder()
             .id("finished")
@@ -210,8 +210,8 @@ class TektonOperationsTest {
     void triggerDoesNotLoseRunsAfterAnInitiallyEmptyPoll() throws Exception {
         String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
         String run = pipelineRun("new-run", "2024-01-01T00:01:00Z", "True");
-        server.expect().get().withPath(path).andReturn(200, pipelineRunList()).once();
-        server.expect().get().withPath(path).andReturn(200, pipelineRunList(run)).once();
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, pipelineRunList()).once();
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, pipelineRunList(run)).once();
 
         Trigger trigger = Trigger.builder()
             .id("finished")
