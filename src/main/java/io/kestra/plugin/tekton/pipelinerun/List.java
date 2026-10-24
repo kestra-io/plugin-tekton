@@ -14,14 +14,16 @@ import io.kestra.plugin.tekton.model.TektonOutput;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
-import java.util.Comparator;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Collections;
 
 @SuperBuilder
 @ToString
@@ -64,21 +66,21 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
     @PluginProperty(group = "advanced")
     @Min(1)
     @Max(1000)
-    @lombok.Builder.Default
+    @Builder.Default
     private final Property<Integer> limit = Property.ofValue(100);
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String renderedNamespace = renderNamespace(runContext);
+        String rNamespace = renderNamespace(runContext);
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
-        SucceededStatus renderedStatus = status == null ? null : runContext.render(status).as(SucceededStatus.class).orElse(null);
-        int renderedLimit = runContext.render(limit).as(Integer.class).orElse(100);
+        SucceededStatus rStatus = status == null ? null : runContext.render(status).as(SucceededStatus.class).orElse(null);
+        int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
-            var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
+            var operation = client.tekton().v1().pipelineRuns().inNamespace(rNamespace);
             var matchingRuns = new ArrayList<PipelineRun>();
             String continueToken = null;
             do {
-                var optionsBuilder = new ListOptionsBuilder().withLimit((long) renderedLimit);
+                var optionsBuilder = new ListOptionsBuilder().withLimit((long) rLimit);
                 if (continueToken != null) {
                     optionsBuilder.withContinue(continueToken);
                 }
@@ -86,13 +88,13 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
                     ? operation.withLabelSelector(selector).list(optionsBuilder.build())
                     : operation.list(optionsBuilder.build());
                 page.getItems().stream()
-                    .filter(run -> renderedStatus == null || renderedStatus.toString().equals(status(run)))
+                    .filter(run -> rStatus == null || rStatus.toString().equals(status(run)))
                     .forEach(matchingRuns::add);
                 continueToken = page.getMetadata() == null ? null : page.getMetadata().getContinue();
-            } while (continueToken != null && !continueToken.isBlank() && matchingRuns.size() < renderedLimit);
+            } while (continueToken != null && !continueToken.isBlank() && matchingRuns.size() < rLimit);
             var items = matchingRuns.stream()
                 .sorted(Comparator.comparing((PipelineRun run) -> run.getMetadata().getName()))
-                .limit(renderedLimit)
+                .limit(rLimit)
                 .map(this::output)
                 .toList();
             return Output.builder().items(items).size(items.size()).build();
@@ -113,14 +115,14 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
         var current = run.getStatus();
         return TektonOutput.from(
             run.getMetadata(),
-            current == null ? java.util.List.of() : current.getConditions(),
+            current == null ? Collections.emptyList() : current.getConditions(),
             current == null ? null : current.getStartTime(),
             current == null ? null : current.getCompletionTime(),
-            current == null ? java.util.List.of() : current.getResults()
+            current == null ? Collections.emptyList() : current.getResults()
         );
     }
 
-    @lombok.Builder
+    @Builder
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(title = "PipelineRuns")

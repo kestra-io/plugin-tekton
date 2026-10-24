@@ -3,45 +3,36 @@ package io.kestra.plugin.tekton;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
 import io.kestra.core.context.TestRunContextFactory;
 import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.runners.WorkingDirFactory;
 import io.kestra.core.models.conditions.ConditionContext;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.triggers.TriggerContext;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextProperty;
-import io.kestra.core.storages.kv.KVStore;
-import io.kestra.core.storages.kv.KVValue;
 import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.tekton.model.TektonOutput;
 import io.kestra.plugin.tekton.pipelinerun.Cancel;
+import io.kestra.plugin.tekton.pipelinerun.Get;
 import io.kestra.plugin.tekton.pipelinerun.List;
 import io.kestra.plugin.tekton.pipelinerun.Trigger;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.HashMap;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 @KestraTest(startApplication = false, startRunner = false, startScheduler = false, startWorker = false)
 class TektonOperationsTest {
     private KubernetesMockServer server;
     private Connection connection;
-    private KVStore store;
-    private Map<String, Object> kvValues;
-    private final TestRunContextFactory runContextFactory = new LocalTestRunContextFactory();
+    @Inject
+    private TestRunContextFactory runContextFactory;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -50,14 +41,6 @@ class TektonOperationsTest {
         connection = Connection.builder()
             .masterUrl(Property.ofValue(server.url("/")))
             .build();
-        store = mock(KVStore.class);
-        kvValues = new HashMap<>();
-        when(store.getValue(anyString())).thenAnswer(invocation -> Optional.ofNullable(kvValues.get(invocation.getArgument(0)))
-            .map(KVValue::new));
-        doAnswer(invocation -> {
-            kvValues.put(invocation.getArgument(0), ((io.kestra.core.storages.kv.KVValueAndMetadata) invocation.getArgument(1)).value());
-            return null;
-        }).when(store).put(anyString(), any(), org.mockito.ArgumentMatchers.eq(true));
     }
 
     @AfterEach
@@ -176,6 +159,23 @@ class TektonOperationsTest {
     }
 
     @Test
+    void readsPipelineRunsThroughMockServer() throws Exception {
+        String run = pipelineRun("read-pipeline", "2024-01-01T00:01:00Z", "True");
+        server.expect().get().withPath("/apis/tekton.dev/v1/namespaces/ci/pipelineruns/read-pipeline")
+            .andReturn(200, run).once();
+
+        TektonOutput output = Get.builder()
+            .connection(connection)
+            .namespace(Property.ofValue("ci"))
+            .name(Property.ofValue("read-pipeline"))
+            .build()
+            .run(runContext());
+
+        assertEquals("read-pipeline", output.getName());
+        assertEquals("True", output.getStatus());
+    }
+
+    @Test
     void triggerInitializesWatermarkAndEmitsRunsInTimestampAndNameOrder() throws Exception {
         String first = pipelineRun("run-a", "2024-01-01T00:01:00Z", "True");
         String second = pipelineRun("run-b", "2024-01-01T00:01:00Z", "True");
@@ -187,19 +187,20 @@ class TektonOperationsTest {
         server.expect().get().withPath(path + "?limit=100").andReturn(200, secondPoll).once();
         server.expect().get().withPath(path + "?limit=100").andReturn(200, secondPoll).once();
 
-        Flow flow = Flow.builder().id("flow").namespace("team").build();
+        String flowId = "ordering-" + UUID.randomUUID();
+        Flow flow = Flow.builder().id(flowId).namespace("team").build();
         Trigger trigger = Trigger.builder()
             .id("finished")
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
-        RunContext runContext = triggerRunContext(trigger);
+        RunContext runContext = runContextFactory.of("team", flowId);
         ConditionContext conditionContext = ConditionContext.builder()
             .flow(flow)
             .runContext(runContext)
             .build();
         TriggerContext triggerContext = TriggerContext.builder()
-            .flowId("flow")
+            .flowId(flowId)
             .triggerId("finished")
             .build();
 
@@ -223,16 +224,17 @@ class TektonOperationsTest {
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
-        RunContext runContext = triggerRunContext(trigger);
+        String flowId = "isolation-" + UUID.randomUUID();
+        RunContext runContext = runContextFactory.of("team", flowId);
         ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id("flow").namespace("team").build())
+            .flow(Flow.builder().id(flowId).namespace("team").build())
             .runContext(runContext)
             .build();
 
         assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder()
-            .flowId("flow-a").triggerId("finished").build()).isPresent());
+            .flowId(flowId + "-a").triggerId("finished").build()).isPresent());
         assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder()
-            .flowId("flow-b").triggerId("finished").build()).isPresent());
+            .flowId(flowId + "-b").triggerId("finished").build()).isPresent());
     }
 
     @Test
@@ -247,13 +249,14 @@ class TektonOperationsTest {
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
-        RunContext runContext = triggerRunContext(trigger);
+        String flowId = "empty-" + UUID.randomUUID();
+        RunContext runContext = runContextFactory.of("team", flowId);
         ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id("flow").namespace("team").build())
+            .flow(Flow.builder().id(flowId).namespace("team").build())
             .runContext(runContext)
             .build();
         TriggerContext triggerContext = TriggerContext.builder()
-            .flowId("flow").triggerId("finished").build();
+            .flowId(flowId).triggerId("finished").build();
 
         assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
@@ -273,6 +276,8 @@ class TektonOperationsTest {
         );
         String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
         server.expect().get().withPath(path + "?limit=100")
+            .andReturn(200, pipelineRunList(pipelineRun("old-run", "2024-01-01T00:01:00Z", "True"))).once();
+        server.expect().get().withPath(path + "?limit=100")
             .andReturn(200, firstPage).once();
         server.expect().get().withPath(path + "?continue=page-2&limit=100")
             .andReturn(200, secondPage).once();
@@ -282,18 +287,16 @@ class TektonOperationsTest {
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
-        RunContext runContext = triggerRunContext(trigger);
+        String flowId = "pagination-" + UUID.randomUUID();
+        RunContext runContext = runContextFactory.of("team", flowId);
         ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id("flow").namespace("team").build())
+            .flow(Flow.builder().id(flowId).namespace("team").build())
             .runContext(runContext)
             .build();
         TriggerContext triggerContext = TriggerContext.builder()
-            .flowId("flow").triggerId("finished").build();
+            .flowId(flowId).triggerId("finished").build();
 
-        kvValues.put("tekton-pipelinerun-watermark-flow-finished", Map.of(
-            "name", "old-run",
-            "time", "2024-01-01T00:01:00Z"
-        ));
+        assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
         assertTrue(execution.isPresent());
         assertTrue(execution.orElseThrow().getLabels().stream()
@@ -302,65 +305,6 @@ class TektonOperationsTest {
 
     private RunContext runContext() {
         return runContextFactory.of("team", "flow");
-    }
-
-    private RunContext triggerRunContext(Trigger trigger) throws Exception {
-        RunContext context = mock(RunContext.class);
-        RunContextProperty<String> namespace = rendered("ci");
-        RunContextProperty<Boolean> inheritClusterConfig = rendered(true);
-        RunContextProperty<String> masterUrl = rendered(server.url("/"));
-        RunContextProperty<?> defaults = renderedDefaults();
-        doAnswer(invocation -> {
-            Property<?> property = invocation.getArgument(0);
-            if (property == trigger.getNamespace()) {
-                return namespace;
-            }
-            if (property == trigger.getInheritClusterConfig()) {
-                return inheritClusterConfig;
-            }
-            if (property == connection.getMasterUrl()) {
-                return masterUrl;
-            }
-            return defaults;
-        }).when(context).render(any(Property.class));
-        when(context.namespaceKv(anyString())).thenReturn(store);
-        when(context.flowInfo()).thenReturn(new RunContext.FlowInfo("tenant", "team", "flow", 1));
-        return context;
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static <T> RunContextProperty<T> rendered(T value) throws Exception {
-        RunContextProperty property = mock(RunContextProperty.class);
-        doReturn(Optional.ofNullable(value)).when(property).as(any(Class.class));
-        return property;
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private RunContextProperty<?> renderedDefaults() throws Exception {
-        RunContextProperty property = mock(RunContextProperty.class);
-        doAnswer(invocation -> {
-            Class<?> type = invocation.getArgument(0);
-            if (type == String.class) {
-                return Optional.of(server.url("/"));
-            }
-            if (type == Boolean.class) {
-                return Optional.of(true);
-            }
-            return Optional.empty();
-        }).when(property).as(any(Class.class));
-        return property;
-    }
-
-    private static final class LocalTestRunContextFactory extends TestRunContextFactory {
-        private LocalTestRunContextFactory() {
-            this.workingDirFactory = new LocalWorkingDirFactory();
-        }
-    }
-
-    private static final class LocalWorkingDirFactory extends WorkingDirFactory {
-        private LocalWorkingDirFactory() {
-            this.tmpdirPath = Optional.empty();
-        }
     }
 
     private static String pipelineRun(String name, String completionTime, String status) {

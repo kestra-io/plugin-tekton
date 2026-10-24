@@ -25,6 +25,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -76,19 +77,19 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
 
     @Schema(title = "Polling interval")
     @PluginProperty(group = "execution")
-    @lombok.Builder.Default
+    @Builder.Default
     private final Duration interval = Duration.ofMinutes(1);
 
     @Schema(
-        title = "Maximum PipelineRuns per poll",
+        title = "PipelineRuns per page",
         description = """
-            Maximum PipelineRuns fetched per poll. Defaults to 100; must be between 1 and 1000. Use a labelSelector to keep trigger polling focused.
+            Number of PipelineRuns fetched per Kubernetes page. Every page is read on each poll when a continuation token is returned. Defaults to 100; must be between 1 and 1000. Use a labelSelector to keep trigger polling focused.
             """
     )
     @PluginProperty(group = "advanced")
     @Min(1)
     @Max(1000)
-    @lombok.Builder.Default
+    @Builder.Default
     private final Property<Integer> limit = Property.ofValue(100);
 
     @Schema(
@@ -99,26 +100,34 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
     @NotNull
     private Connection connection;
 
-    @Schema(title = "Tekton namespace")
+    @Schema(
+        title = "Tekton namespace",
+        description = "Kubernetes namespace containing the PipelineRuns to poll. Defaults to default."
+    )
     @PluginProperty(group = "connection")
-    @lombok.Builder.Default
+    @NotNull
+    @Builder.Default
     private final Property<String> namespace = Property.ofValue("default");
 
     @Schema(title = "Label selector", description = "Kubernetes label selector applied to PipelineRuns.")
     @PluginProperty(group = "advanced")
     private Property<String> labelSelector;
 
-    @Schema(title = "Inherit cluster auto-configuration")
+    @Schema(
+        title = "Inherit cluster auto-configuration",
+        description = "When true, explicit connection fields override the ambient kubeconfig or in-cluster configuration."
+    )
     @PluginProperty(group = "advanced")
-    @lombok.Builder.Default
+    @NotNull
+    @Builder.Default
     private final Property<Boolean> inheritClusterConfig = Property.ofValue(true);
 
     @Override
     public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext triggerContext) throws Exception {
         RunContext runContext = conditionContext.getRunContext();
-        String renderedNamespace = runContext.render(namespace).as(String.class).orElse("default");
+        String rNamespace = runContext.render(namespace).as(String.class).orElse("default");
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
-        int renderedLimit = runContext.render(limit).as(Integer.class).orElse(100);
+        int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
         List<PipelineRun> runs;
         if (interval.isZero() || interval.isNegative()) {
             throw new IllegalArgumentException("interval must be greater than PT0S");
@@ -126,11 +135,11 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(
             connection, runContext, runContext.render(inheritClusterConfig).as(Boolean.class).orElse(true)
         )) {
-            var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
+            var operation = client.tekton().v1().pipelineRuns().inNamespace(rNamespace);
             runs = new ArrayList<>();
             String continueToken = null;
             do {
-                var optionsBuilder = new ListOptionsBuilder().withLimit((long) renderedLimit);
+                var optionsBuilder = new ListOptionsBuilder().withLimit((long) rLimit);
                 if (continueToken != null) {
                     optionsBuilder.withContinue(continueToken);
                 }
@@ -184,7 +193,7 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         String status = status(next);
         Map<String, Object> triggerData = Map.of(
             "name", next.getMetadata().getName(),
-            "namespace", renderedNamespace,
+            "namespace", rNamespace,
             "status", status,
             "completionTime", watermark(next)
         );
@@ -195,7 +204,7 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
                 new Label("tekton.pipelinerun.name", next.getMetadata().getName()),
                 new Label("tekton.pipelinerun.status", status)
             ),
-             Optional.of(Instant.parse(watermark(next)).atZone(ZoneOffset.UTC))
+            Optional.of(Instant.parse(watermark(next)).atZone(ZoneOffset.UTC))
         ));
     }
 
