@@ -21,7 +21,7 @@ import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 import java.util.Comparator;
-import java.util.Map;
+import java.util.ArrayList;
 
 @SuperBuilder
 @ToString
@@ -55,7 +55,12 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
     @PluginProperty(group = "advanced")
     private Property<SucceededStatus> status;
 
-    @Schema(title = "Maximum number of PipelineRuns to return", description = "Bounds the task output and Kubernetes list response.")
+    @Schema(
+        title = "Maximum number of PipelineRuns to return",
+        description = """
+            Maximum number of matching PipelineRuns to return. Defaults to 100; must be between 1 and 1000.
+            """
+    )
     @PluginProperty(group = "advanced")
     @Min(1)
     @Max(1000)
@@ -70,13 +75,24 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
         int renderedLimit = runContext.render(limit).as(Integer.class).orElse(100);
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
             var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
-            var options = new ListOptionsBuilder().withLimit((long) renderedLimit).build();
-            var runs = selector != null && !selector.isBlank()
-                ? operation.withLabelSelector(selector).list(options).getItems()
-                : operation.list(options).getItems();
-            var items = runs.stream()
-                .filter(run -> renderedStatus == null || renderedStatus.toString().equals(status(run)))
+            var matchingRuns = new ArrayList<PipelineRun>();
+            String continueToken = null;
+            do {
+                var optionsBuilder = new ListOptionsBuilder().withLimit((long) renderedLimit);
+                if (continueToken != null) {
+                    optionsBuilder.withContinue(continueToken);
+                }
+                var page = selector != null && !selector.isBlank()
+                    ? operation.withLabelSelector(selector).list(optionsBuilder.build())
+                    : operation.list(optionsBuilder.build());
+                page.getItems().stream()
+                    .filter(run -> renderedStatus == null || renderedStatus.toString().equals(status(run)))
+                    .forEach(matchingRuns::add);
+                continueToken = page.getMetadata() == null ? null : page.getMetadata().getContinue();
+            } while (continueToken != null && !continueToken.isBlank() && matchingRuns.size() < renderedLimit);
+            var items = matchingRuns.stream()
                 .sorted(Comparator.comparing((PipelineRun run) -> run.getMetadata().getName()))
+                .limit(renderedLimit)
                 .map(this::output)
                 .toList();
             return Output.builder().items(items).size(items.size()).build();

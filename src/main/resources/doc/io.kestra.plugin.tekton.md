@@ -2,6 +2,8 @@
 
 Connect Kestra to Tekton Pipelines installed on Kubernetes and orchestrate PipelineRuns and TaskRuns from a flow.
 
+See the [plugin defaults](https://kestra.io/docs/plugin-developer-guide/plugin-defaults) for shared task configuration and default behavior.
+
 ## Authentication
 
 Tasks and triggers accept a `connection` object. Fabric8 can use the current kubeconfig or in-cluster service account automatically. For explicit authentication, provide `masterUrl`, `oauthToken`, and optionally `caCertData`. Store credentials in [Kestra secrets](https://kestra.io/docs/concepts/secret) and reference them with `{{ secret('K8S_TOKEN') }}`.

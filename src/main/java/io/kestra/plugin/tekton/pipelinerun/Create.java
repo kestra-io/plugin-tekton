@@ -1,10 +1,8 @@
 package io.kestra.plugin.tekton.pipelinerun;
 
-import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.tekton.client.TektonClient;
 import io.fabric8.tekton.v1.PipelineRun;
-import io.fabric8.tekton.v1.PipelineRunSpec;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -84,21 +82,21 @@ public class Create extends AbstractTektonCreate<PipelineRun> {
 
     @Override
     public TektonOutput run(RunContext runContext) throws Exception {
-        String renderedNamespace = renderNamespace(runContext);
-        String renderedPipelineRef = TektonRunSupport.renderString(runContext, pipelineRef);
-        String renderedSpec = TektonRunSupport.renderString(runContext, spec);
-        Map<String, Object> renderedParams = params == null ? Map.of() : runContext.render(params).asMap(String.class, Object.class);
-        List<Object> renderedWorkspaces = workspaces == null ? List.of() : runContext.render(workspaces).asList(Object.class);
-        String renderedServiceAccount = TektonRunSupport.renderString(runContext, serviceAccountName);
+        String rNamespace = renderNamespace(runContext);
+        String rPipelineRef = TektonRunSupport.renderString(runContext, pipelineRef);
+        String rSpec = TektonRunSupport.renderString(runContext, spec);
+        Map<String, Object> rParams = params == null ? Map.of() : runContext.render(params).asMap(String.class, Object.class);
+        List<Object> rWorkspaces = workspaces == null ? List.of() : runContext.render(workspaces).asList(Object.class);
+        String rServiceAccount = TektonRunSupport.renderString(runContext, serviceAccountName);
 
-        PipelineRunSpec pipelineRunSpec = TektonRunSupport.pipelineSpec(
-            runContext, renderedSpec, renderedPipelineRef, renderedParams, renderedWorkspaces, renderedServiceAccount
+        var pipelineRunSpec = TektonRunSupport.pipelineSpec(
+            runContext, rSpec, rPipelineRef, rParams, rWorkspaces, rServiceAccount
         );
-        PipelineRun pipelineRun = new PipelineRun();
+        var pipelineRun = new PipelineRun();
         pipelineRun.setMetadata(TektonRunSupport.metadata("kestra-pipeline"));
         pipelineRun.setSpec(pipelineRunSpec);
 
-        return execute(runContext, renderedNamespace, pipelineRun);
+        return execute(runContext, rNamespace, pipelineRun);
     }
 
     @Override

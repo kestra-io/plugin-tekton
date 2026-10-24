@@ -20,9 +20,11 @@ import io.kestra.core.storages.kv.KVStore;
 import io.kestra.core.storages.kv.KVValueAndMetadata;
 import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.tekton.TektonClientSupport;
+import io.kestra.plugin.tekton.model.TektonOutput;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -31,6 +33,8 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +71,7 @@ import java.util.Optional;
             """
     )
 )
-public class Trigger extends AbstractTrigger implements PollingTriggerInterface, TriggerOutput<io.kestra.plugin.tekton.model.TektonOutput> {
+public class Trigger extends AbstractTrigger implements PollingTriggerInterface, TriggerOutput<TektonOutput> {
     private static final String WATERMARK_KEY = "tekton-pipelinerun-watermark";
 
     @Schema(title = "Polling interval")
@@ -75,15 +79,24 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
     @lombok.Builder.Default
     private final Duration interval = Duration.ofMinutes(1);
 
-    @Schema(title = "Maximum PipelineRuns per poll", description = "Bounds each Kubernetes list response. Use a labelSelector to keep trigger polling focused.")
+    @Schema(
+        title = "Maximum PipelineRuns per poll",
+        description = """
+            Maximum PipelineRuns fetched per poll. Defaults to 100; must be between 1 and 1000. Use a labelSelector to keep trigger polling focused.
+            """
+    )
     @PluginProperty(group = "advanced")
     @Min(1)
     @Max(1000)
     @lombok.Builder.Default
     private final Property<Integer> limit = Property.ofValue(100);
 
-    @Schema(title = "Kubernetes connection")
+    @Schema(
+        title = "Kubernetes connection",
+        description = "Connection settings for the Kubernetes cluster, matching the task connection properties."
+    )
     @PluginProperty(group = "connection")
+    @NotNull
     private Connection connection;
 
     @Schema(title = "Tekton namespace")
@@ -114,10 +127,19 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             connection, runContext, runContext.render(inheritClusterConfig).as(Boolean.class).orElse(true)
         )) {
             var operation = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace);
-            var options = new ListOptionsBuilder().withLimit((long) renderedLimit).build();
-            runs = selector == null || selector.isBlank()
-                ? operation.list(options).getItems()
-                : operation.withLabelSelector(selector).list(options).getItems();
+            runs = new ArrayList<>();
+            String continueToken = null;
+            do {
+                var optionsBuilder = new ListOptionsBuilder().withLimit((long) renderedLimit);
+                if (continueToken != null) {
+                    optionsBuilder.withContinue(continueToken);
+                }
+                var page = selector == null || selector.isBlank()
+                    ? operation.list(optionsBuilder.build())
+                    : operation.withLabelSelector(selector).list(optionsBuilder.build());
+                runs.addAll(page.getItems());
+                continueToken = page.getMetadata() == null ? null : page.getMetadata().getContinue();
+            } while (continueToken != null && !continueToken.isBlank());
         }
 
         List<PipelineRun> terminalRuns = runs.stream()
@@ -173,7 +195,7 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
                 new Label("tekton.pipelinerun.name", next.getMetadata().getName()),
                 new Label("tekton.pipelinerun.status", status)
             ),
-            Optional.of(Instant.parse(watermark(next)).atZone(java.time.ZoneOffset.UTC))
+             Optional.of(Instant.parse(watermark(next)).atZone(ZoneOffset.UTC))
         ));
     }
 

@@ -16,4 +16,3 @@ out/
 src/test/resources/application-test.yml
 .factorypath
 bin/
-.tools/

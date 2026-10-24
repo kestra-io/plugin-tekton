@@ -2,6 +2,7 @@ package io.kestra.plugin.tekton;
 
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
 import io.kestra.core.context.TestRunContextFactory;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.runners.WorkingDirFactory;
 import io.kestra.core.models.conditions.ConditionContext;
 import io.kestra.core.models.flows.Flow;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@KestraTest(startApplication = false, startRunner = false, startScheduler = false, startWorker = false)
 class TektonOperationsTest {
     private KubernetesMockServer server;
     private Connection connection;
@@ -113,6 +115,33 @@ class TektonOperationsTest {
         server.takeRequest();
         server.takeRequest();
         assertTrue(server.takeRequest().getUtf8Body().contains("Cancelled"));
+    }
+
+    @Test
+    void listPaginatesBeforeApplyingStatusFilter() throws Exception {
+        String firstPage = pipelineRunListWithContinue(
+            "page-2",
+            pipelineRun("running", "2024-01-01T00:01:00Z", "Unknown")
+        );
+        String secondPage = pipelineRunList(
+            pipelineRun("failed", "2024-01-01T00:02:00Z", "False")
+        );
+        String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
+        server.expect().get().withPath(path + "?limit=1")
+            .andReturn(200, firstPage).once();
+        server.expect().get().withPath(path + "?continue=page-2&limit=1")
+            .andReturn(200, secondPage).once();
+
+        List.Output output = List.builder()
+            .connection(connection)
+            .namespace(Property.ofValue("ci"))
+            .status(Property.ofValue(List.SucceededStatus.False))
+            .limit(Property.ofValue(1))
+            .build()
+            .run(runContext());
+
+        assertEquals(1, output.getSize());
+        assertEquals("failed", output.getItems().getFirst().getName());
     }
 
     @Test
@@ -233,6 +262,48 @@ class TektonOperationsTest {
             .anyMatch(label -> label.key().equals("tekton.pipelinerun.name") && label.value().equals("new-run")));
     }
 
+    @Test
+    void triggerPaginatesAcrossPipelineRunPages() throws Exception {
+        String firstPage = pipelineRunListWithContinue(
+            "page-2",
+            pipelineRun("old-run", "2024-01-01T00:01:00Z", "True")
+        );
+        String secondPage = pipelineRunList(
+            pipelineRun("new-run", "2024-01-01T00:02:00Z", "True")
+        );
+        String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
+        server.expect().get().withPath(path + "?limit=100")
+            .andReturn(200, firstPage).once();
+        server.expect().get().withPath(path + "?continue=page-2&limit=100")
+            .andReturn(200, secondPage).once();
+        server.expect().get().withPath(path + "?limit=100")
+            .andReturn(200, pipelineRunListWithContinue(
+                "page-2",
+                pipelineRun("old-run", "2024-01-01T00:01:00Z", "True")
+            )).once();
+        server.expect().get().withPath(path + "?continue=page-2&limit=100")
+            .andReturn(200, secondPage).once();
+
+        Trigger trigger = Trigger.builder()
+            .id("finished")
+            .connection(connection)
+            .namespace(Property.ofValue("ci"))
+            .build();
+        RunContext runContext = triggerRunContext(trigger);
+        ConditionContext conditionContext = ConditionContext.builder()
+            .flow(Flow.builder().id("flow").namespace("team").build())
+            .runContext(runContext)
+            .build();
+        TriggerContext triggerContext = TriggerContext.builder()
+            .flowId("flow").triggerId("finished").build();
+
+        assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
+        Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
+        assertTrue(execution.isPresent());
+        assertTrue(execution.orElseThrow().getLabels().stream()
+            .anyMatch(label -> label.key().equals("tekton.pipelinerun.name") && label.value().equals("new-run")));
+    }
+
     private RunContext runContext() {
         return runContextFactory.of("team", "flow");
     }
@@ -324,5 +395,11 @@ class TektonOperationsTest {
         return """
             {"apiVersion":"tekton.dev/v1","kind":"PipelineRunList","items":[%s]}
             """.formatted(String.join(",", runs));
+    }
+
+    private static String pipelineRunListWithContinue(String continuation, String... runs) {
+        return """
+            {"apiVersion":"tekton.dev/v1","kind":"PipelineRunList","metadata":{"continue":"%s"},"items":[%s]}
+            """.formatted(continuation, String.join(",", runs));
     }
 }
