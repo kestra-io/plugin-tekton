@@ -1,7 +1,7 @@
 @PluginSubGroup(
     title = "Tekton",
-    description = "Tekton plugin for Kestra",
-    categories = PluginSubGroup.PluginCategory.DATA
+    description = "Orchestrate Tekton PipelineRuns and TaskRuns from Kestra",
+    categories = PluginSubGroup.PluginCategory.INFRASTRUCTURE
 )
 package io.kestra.plugin.tekton;
 

@@ -3,7 +3,7 @@
 ## What
 
 - Provides plugin components under `io.kestra.plugin.tekton`.
-- Includes classes such as `Example`, `Trigger`.
+- Includes PipelineRun and TaskRun tasks and a PipelineRun polling trigger.
 
 ## Why
 
@@ -25,7 +25,13 @@ Infrastructure dependencies (Docker Compose services):
 
 ### Key Plugin Classes
 
-- `io.kestra.plugin.tekton.Example`
+- `io.kestra.plugin.tekton.pipelinerun.Create`
+- `io.kestra.plugin.tekton.pipelinerun.Get`
+- `io.kestra.plugin.tekton.pipelinerun.List`
+- `io.kestra.plugin.tekton.pipelinerun.Cancel`
+- `io.kestra.plugin.tekton.pipelinerun.Trigger`
+- `io.kestra.plugin.tekton.taskrun.Create`
+- `io.kestra.plugin.tekton.taskrun.Get`
 
 ### Project Structure
 
