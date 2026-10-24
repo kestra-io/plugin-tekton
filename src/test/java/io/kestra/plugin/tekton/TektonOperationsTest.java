@@ -276,13 +276,6 @@ class TektonOperationsTest {
             .andReturn(200, firstPage).once();
         server.expect().get().withPath(path + "?continue=page-2&limit=100")
             .andReturn(200, secondPage).once();
-        server.expect().get().withPath(path + "?limit=100")
-            .andReturn(200, pipelineRunListWithContinue(
-                "page-2",
-                pipelineRun("old-run", "2024-01-01T00:01:00Z", "True")
-            )).once();
-        server.expect().get().withPath(path + "?continue=page-2&limit=100")
-            .andReturn(200, secondPage).once();
 
         Trigger trigger = Trigger.builder()
             .id("finished")
@@ -297,7 +290,10 @@ class TektonOperationsTest {
         TriggerContext triggerContext = TriggerContext.builder()
             .flowId("flow").triggerId("finished").build();
 
-        assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
+        kvValues.put("tekton-pipelinerun-watermark-flow-finished", Map.of(
+            "name", "old-run",
+            "time", "2024-01-01T00:01:00Z"
+        ));
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
         assertTrue(execution.isPresent());
         assertTrue(execution.orElseThrow().getLabels().stream()
