@@ -50,13 +50,13 @@ public class Get extends AbstractTektonTask implements RunnableTask<TektonOutput
 
     @Override
     public TektonOutput run(RunContext runContext) throws Exception {
-        String renderedNamespace = renderNamespace(runContext);
-        String renderedName = runContext.render(name).as(String.class)
+        String rNamespace = renderNamespace(runContext);
+        String rName = runContext.render(name).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("name must render to a non-empty string"));
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
-            TaskRun taskRun = client.tekton().v1().taskRuns().inNamespace(renderedNamespace).withName(renderedName).get();
+            TaskRun taskRun = client.tekton().v1().taskRuns().inNamespace(rNamespace).withName(rName).get();
             if (taskRun == null) {
-                throw new IllegalStateException("TaskRun '" + renderedName + "' was not found in namespace '" + renderedNamespace + "'");
+                throw new IllegalStateException("TaskRun '" + rName + "' was not found in namespace '" + rNamespace + "'");
             }
             var status = taskRun.getStatus();
             return TektonOutput.from(

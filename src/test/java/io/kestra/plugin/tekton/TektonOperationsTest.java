@@ -214,27 +214,35 @@ class TektonOperationsTest {
     }
 
     @Test
-    void triggerWatermarkIsIsolatedPerFlowAndTrigger() throws Exception {
-        String run = pipelineRun("history", "2024-01-01T00:01:00Z", "True");
+    void triggerWatermarkIsIsolatedForAmbiguousFlowAndTriggerIds() throws Exception {
+        String history = pipelineRun("history", "2024-01-01T00:01:00Z", "True");
+        String next = pipelineRun("next", "2024-01-01T00:02:00Z", "True");
         String path = "/apis/tekton.dev/v1/namespaces/ci/pipelineruns";
-        server.expect().get().withPath(path + "?limit=100").andReturn(200, pipelineRunList(run)).times(2);
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, pipelineRunList(history)).times(2);
+        server.expect().get().withPath(path + "?limit=100").andReturn(200, pipelineRunList(next, history)).times(2);
 
         Trigger trigger = Trigger.builder()
             .id("finished")
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
-        String flowId = "isolation-" + UUID.randomUUID();
-        RunContext runContext = runContextFactory.of("team", flowId);
+        String prefix = UUID.randomUUID().toString();
+        String firstFlowId = prefix + "-a-b";
+        String secondFlowId = prefix + "-a";
+        RunContext runContext = runContextFactory.of("team", firstFlowId);
         ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id(flowId).namespace("team").build())
+            .flow(Flow.builder().id(firstFlowId).namespace("team").build())
             .runContext(runContext)
             .build();
 
         assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder()
-            .flowId(flowId + "-a").triggerId("finished").build()).isPresent());
+            .flowId(firstFlowId).triggerId("c").build()).isPresent());
         assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder()
-            .flowId(flowId + "-b").triggerId("finished").build()).isPresent());
+            .flowId(secondFlowId).triggerId("b-c").build()).isPresent());
+        assertTrue(trigger.evaluate(conditionContext, TriggerContext.builder()
+            .flowId(firstFlowId).triggerId("c").build()).isPresent());
+        assertTrue(trigger.evaluate(conditionContext, TriggerContext.builder()
+            .flowId(secondFlowId).triggerId("b-c").build()).isPresent());
     }
 
     @Test

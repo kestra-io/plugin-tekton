@@ -94,15 +94,14 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
 
     @Schema(
         title = "Kubernetes connection",
-        description = "Connection settings for the Kubernetes cluster, matching the task connection properties."
+        description = "Connection settings for the Kubernetes cluster. When omitted, Fabric8 discovers credentials from system properties, environment variables, kubeconfig, or the in-cluster service account."
     )
     @PluginProperty(group = "connection")
-    @NotNull
     private Connection connection;
 
     @Schema(
         title = "Tekton namespace",
-        description = "Kubernetes namespace containing the PipelineRuns to poll. Defaults to default."
+        description = "Namespace where the PipelineRun is managed."
     )
     @PluginProperty(group = "connection")
     @NotNull
@@ -245,7 +244,15 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         if (flowId == null) {
             flowId = runContext.flowInfo().id();
         }
-        return WATERMARK_KEY + "-" + flowId + "-" + (triggerId == null ? "default" : triggerId);
+        String rFlowId = flowId == null ? "default" : flowId;
+        String rTriggerId = triggerId == null ? "default" : triggerId;
+        return "%s-%d-%s-%d-%s".formatted(
+            WATERMARK_KEY,
+            rFlowId.length(),
+            rFlowId,
+            rTriggerId.length(),
+            rTriggerId
+        );
     }
 
     private boolean newerThan(PipelineRun run, Watermark watermark) {

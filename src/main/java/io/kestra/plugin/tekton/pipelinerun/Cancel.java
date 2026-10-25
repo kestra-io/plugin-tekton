@@ -1,6 +1,7 @@
 package io.kestra.plugin.tekton.pipelinerun;
 
 import io.fabric8.tekton.v1.PipelineRun;
+import io.fabric8.tekton.v1.PipelineRunSpec;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -50,20 +51,17 @@ public class Cancel extends AbstractTektonTask implements RunnableTask<TektonOut
 
     @Override
     public TektonOutput run(RunContext runContext) throws Exception {
-        String renderedNamespace = renderNamespace(runContext);
-        String renderedName = runContext.render(name).as(String.class)
+        String rNamespace = renderNamespace(runContext);
+        String rName = runContext.render(name).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("name must render to a non-empty string"));
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
-            PipelineRun pipelineRun = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace).withName(renderedName).get();
+            PipelineRun pipelineRun = client.tekton().v1().pipelineRuns().inNamespace(rNamespace).withName(rName).get();
             if (pipelineRun == null) {
-                throw new IllegalStateException("PipelineRun '" + renderedName + "' was not found");
+                throw new IllegalStateException("PipelineRun '" + rName + "' was not found");
             }
-            if (pipelineRun.getSpec() == null) {
-                pipelineRun.setSpec(new io.fabric8.tekton.v1.PipelineRunSpec());
-            }
-            PipelineRun cancelled = client.tekton().v1().pipelineRuns().inNamespace(renderedNamespace).withName(renderedName).edit(current -> {
+            PipelineRun cancelled = client.tekton().v1().pipelineRuns().inNamespace(rNamespace).withName(rName).edit(current -> {
                 if (current.getSpec() == null) {
-                    current.setSpec(new io.fabric8.tekton.v1.PipelineRunSpec());
+                    current.setSpec(new PipelineRunSpec());
                 }
                 current.getSpec().setStatus("Cancelled");
                 return current;

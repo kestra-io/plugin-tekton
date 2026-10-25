@@ -1,12 +1,15 @@
 package io.kestra.plugin.tekton;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.tekton.v1.Param;
 import io.fabric8.tekton.v1.ParamValue;
+import io.fabric8.tekton.v1.PipelineRef;
 import io.fabric8.tekton.v1.PipelineRunSpec;
+import io.fabric8.tekton.v1.PipelineTaskRunTemplate;
+import io.fabric8.tekton.v1.TaskRef;
 import io.fabric8.tekton.v1.TaskRunSpec;
 import io.fabric8.tekton.v1.WorkspaceBinding;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.tekton.model.TektonOutput;
@@ -29,7 +32,7 @@ public final class TektonRunSupport {
             : JacksonMapper.ofYaml().readValue(inlineSpec, PipelineRunSpec.class);
 
         if (pipelineRef != null && !pipelineRef.isBlank()) {
-            var ref = new io.fabric8.tekton.v1.PipelineRef();
+            var ref = new PipelineRef();
             ref.setName(pipelineRef);
             spec.setPipelineRef(ref);
         }
@@ -41,7 +44,7 @@ public final class TektonRunSupport {
         if (serviceAccountName != null && !serviceAccountName.isBlank()) {
             var template = spec.getTaskRunTemplate();
             if (template == null) {
-                template = new io.fabric8.tekton.v1.PipelineTaskRunTemplate();
+                template = new PipelineTaskRunTemplate();
             }
             template.setServiceAccountName(serviceAccountName);
             spec.setTaskRunTemplate(template);
@@ -57,7 +60,7 @@ public final class TektonRunSupport {
             : JacksonMapper.ofYaml().readValue(inlineSpec, TaskRunSpec.class);
 
         if (taskRef != null && !taskRef.isBlank()) {
-            var ref = new io.fabric8.tekton.v1.TaskRef();
+            var ref = new TaskRef();
             ref.setName(taskRef);
             spec.setTaskRef(ref);
         }
@@ -122,7 +125,7 @@ public final class TektonRunSupport {
         return values == null ? new LinkedHashMap<>() : runContext.render(values);
     }
 
-    public static String renderString(RunContext runContext, io.kestra.core.models.property.Property<String> value) throws Exception {
+    public static String renderString(RunContext runContext, Property<String> value) throws Exception {
         return value == null ? null : runContext.render(value).as(String.class).orElse(null);
     }
 

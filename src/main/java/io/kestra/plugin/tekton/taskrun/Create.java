@@ -69,20 +69,20 @@ public class Create extends AbstractTektonCreate<TaskRun> {
 
     @Override
     public TektonOutput run(RunContext runContext) throws Exception {
-        String renderedNamespace = renderNamespace(runContext);
-        String renderedTaskRef = TektonRunSupport.renderString(runContext, taskRef);
-        String renderedSpec = TektonRunSupport.renderString(runContext, spec);
-        Map<String, Object> renderedParams = params == null ? Map.of() : runContext.render(params).asMap(String.class, Object.class);
-        List<Object> renderedWorkspaces = workspaces == null ? List.of() : runContext.render(workspaces).asList(Object.class);
-        String renderedServiceAccount = TektonRunSupport.renderString(runContext, serviceAccountName);
+        String rNamespace = renderNamespace(runContext);
+        String rTaskRef = TektonRunSupport.renderString(runContext, taskRef);
+        String rSpec = TektonRunSupport.renderString(runContext, spec);
+        Map<String, Object> rParams = params == null ? Map.of() : runContext.render(params).asMap(String.class, Object.class);
+        List<Object> rWorkspaces = workspaces == null ? List.of() : runContext.render(workspaces).asList(Object.class);
+        String rServiceAccount = TektonRunSupport.renderString(runContext, serviceAccountName);
         TaskRunSpec taskRunSpec = TektonRunSupport.taskSpec(
-            runContext, renderedSpec, renderedTaskRef, renderedParams, renderedWorkspaces, renderedServiceAccount
+            runContext, rSpec, rTaskRef, rParams, rWorkspaces, rServiceAccount
         );
         TaskRun taskRun = new TaskRun();
         taskRun.setMetadata(TektonRunSupport.metadata("kestra-task"));
         taskRun.setSpec(taskRunSpec);
 
-        return execute(runContext, renderedNamespace, taskRun);
+        return execute(runContext, rNamespace, taskRun);
     }
 
     @Override

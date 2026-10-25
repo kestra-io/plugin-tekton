@@ -11,6 +11,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.tekton.model.TektonOutput;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -31,13 +32,13 @@ public abstract class AbstractTektonCreate<R extends HasMetadata> extends Abstra
     @Schema(title = "Wait for completion", description = "When true, wait for the Tekton run to reach a terminal Succeeded condition.")
     @PluginProperty(group = "execution")
     @NotNull
-    @lombok.Builder.Default
+    @Builder.Default
     private final Property<Boolean> wait = Property.ofValue(false);
 
     @Schema(title = "Wait timeout", description = "Maximum time to wait for the Tekton run to reach a terminal status.")
     @PluginProperty(group = "execution")
     @NotNull
-    @lombok.Builder.Default
+    @Builder.Default
     private final Property<Duration> waitTimeout = Property.ofValue(Duration.ofMinutes(30));
 
     @JsonIgnore

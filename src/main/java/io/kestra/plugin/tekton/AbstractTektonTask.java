@@ -7,6 +7,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -34,7 +35,7 @@ public abstract class AbstractTektonTask extends Task {
     )
     @PluginProperty(group = "connection")
     @NotNull
-    @lombok.Builder.Default
+    @Builder.Default
     private final Property<String> namespace = Property.ofValue("default");
 
     @Schema(
@@ -43,7 +44,7 @@ public abstract class AbstractTektonTask extends Task {
     )
     @PluginProperty(group = "advanced")
     @NotNull
-    @lombok.Builder.Default
+    @Builder.Default
     private final Property<Boolean> inheritClusterConfig = Property.ofValue(true);
 
     @Schema(
@@ -52,7 +53,7 @@ public abstract class AbstractTektonTask extends Task {
     )
     @PluginProperty(group = "execution")
     @NotNull
-    @lombok.Builder.Default
+    @Builder.Default
     protected final Property<Duration> pollInterval = Property.ofValue(Duration.ofSeconds(5));
 
     protected String renderNamespace(RunContext runContext) throws Exception {
