@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @KestraTest(startApplication = false, startRunner = false, startScheduler = false, startWorker = false)
@@ -125,6 +126,18 @@ class TektonOperationsTest {
 
         assertEquals(1, output.getSize());
         assertEquals("failed", output.getItems().getFirst().getName());
+    }
+
+    @Test
+    void rejectsListLimitOutsideSupportedRange() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> List.builder()
+            .connection(connection)
+            .namespace(Property.ofValue("ci"))
+            .limit(Property.ofValue(0))
+            .build()
+            .run(runContext()));
+
+        assertEquals("limit must be between 1 and 1000", exception.getMessage());
     }
 
     @Test
@@ -271,6 +284,29 @@ class TektonOperationsTest {
         assertTrue(execution.isPresent());
         assertTrue(execution.orElseThrow().getLabels().stream()
             .anyMatch(label -> label.key().equals("tekton.pipelinerun.name") && label.value().equals("new-run")));
+    }
+
+    @Test
+    void rejectsTriggerLimitOutsideSupportedRange() {
+        String flowId = "invalid-limit-" + UUID.randomUUID();
+        Trigger trigger = Trigger.builder()
+            .id("finished")
+            .connection(connection)
+            .namespace(Property.ofValue("ci"))
+            .limit(Property.ofValue(1001))
+            .build();
+        RunContext runContext = runContextFactory.of("team", flowId);
+        ConditionContext conditionContext = ConditionContext.builder()
+            .flow(Flow.builder().id(flowId).namespace("team").build())
+            .runContext(runContext)
+            .build();
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> trigger.evaluate(
+            conditionContext,
+            TriggerContext.builder().flowId(flowId).triggerId("finished").build()
+        ));
+
+        assertEquals("limit must be between 1 and 1000", exception.getMessage());
     }
 
     @Test

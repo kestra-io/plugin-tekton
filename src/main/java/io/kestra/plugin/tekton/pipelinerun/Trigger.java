@@ -22,8 +22,6 @@ import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.tekton.TektonClientSupport;
 import io.kestra.plugin.tekton.model.TektonOutput;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -87,8 +85,6 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             """
     )
     @PluginProperty(group = "advanced")
-    @Min(1)
-    @Max(1000)
     @Builder.Default
     private final Property<Integer> limit = Property.ofValue(100);
 
@@ -127,6 +123,9 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
         String rNamespace = runContext.render(namespace).as(String.class).orElse("default");
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
         int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
+        if (rLimit < 1 || rLimit > 1000) {
+            throw new IllegalArgumentException("limit must be between 1 and 1000");
+        }
         List<PipelineRun> runs;
         if (interval.isZero() || interval.isNegative()) {
             throw new IllegalArgumentException("interval must be greater than PT0S");

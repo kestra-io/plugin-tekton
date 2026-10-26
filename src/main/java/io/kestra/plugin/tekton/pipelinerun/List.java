@@ -12,8 +12,6 @@ import io.kestra.plugin.tekton.AbstractTektonTask;
 import io.kestra.plugin.tekton.TektonClientSupport;
 import io.kestra.plugin.tekton.model.TektonOutput;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -64,8 +62,6 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
             """
     )
     @PluginProperty(group = "advanced")
-    @Min(1)
-    @Max(1000)
     @Builder.Default
     private final Property<Integer> limit = Property.ofValue(100);
 
@@ -75,6 +71,9 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
         String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
         SucceededStatus rStatus = status == null ? null : runContext.render(status).as(SucceededStatus.class).orElse(null);
         int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
+        if (rLimit < 1 || rLimit > 1000) {
+            throw new IllegalArgumentException("limit must be between 1 and 1000");
+        }
         try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(getConnection(), runContext, renderInheritClusterConfig(runContext))) {
             var operation = client.tekton().v1().pipelineRuns().inNamespace(rNamespace);
             var matchingRuns = new ArrayList<PipelineRun>();

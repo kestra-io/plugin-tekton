@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import io.fabric8.knative.pkg.apis.Condition;
 import io.fabric8.tekton.v1.ParamValue;
 import io.fabric8.tekton.client.TektonClient;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
@@ -33,13 +34,13 @@ public final class TektonClientSupport {
         return new ClientHandle(kubernetesClient, kubernetesClient.adapt(TektonClient.class));
     }
 
-    public static String conditionStatus(List<? extends io.fabric8.knative.pkg.apis.Condition> conditions) {
+    public static String conditionStatus(List<? extends Condition> conditions) {
         if (conditions == null) {
             return "Unknown";
         }
         return conditions.stream()
             .filter(condition -> "Succeeded".equals(condition.getType()))
-            .map(io.fabric8.knative.pkg.apis.Condition::getStatus)
+            .map(Condition::getStatus)
             .filter(Objects::nonNull)
             .findFirst()
             .orElse("Unknown");
