@@ -68,7 +68,7 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
     @Override
     public Output run(RunContext runContext) throws Exception {
         String rNamespace = renderNamespace(runContext);
-        String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
+        String rSelector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
         SucceededStatus rStatus = status == null ? null : runContext.render(status).as(SucceededStatus.class).orElse(null);
         int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
         if (rLimit < 1 || rLimit > 1000) {
@@ -83,8 +83,8 @@ public class List extends AbstractTektonTask implements RunnableTask<List.Output
                 if (continueToken != null) {
                     optionsBuilder.withContinue(continueToken);
                 }
-                var page = selector != null && !selector.isBlank()
-                    ? operation.withLabelSelector(selector).list(optionsBuilder.build())
+                var page = rSelector != null && !rSelector.isBlank()
+                    ? operation.withLabelSelector(rSelector).list(optionsBuilder.build())
                     : operation.list(optionsBuilder.build());
                 page.getItems().stream()
                     .filter(run -> rStatus == null || rStatus.toString().equals(status(run)))

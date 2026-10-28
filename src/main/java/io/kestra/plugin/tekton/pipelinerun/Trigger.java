@@ -13,11 +13,13 @@ import io.kestra.core.models.triggers.AbstractTrigger;
 import io.kestra.core.models.triggers.PollingTriggerInterface;
 import io.kestra.core.models.triggers.TriggerContext;
 import io.kestra.core.models.triggers.TriggerOutput;
+import io.kestra.core.models.triggers.TriggerService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.kv.KVMetadata;
 import io.kestra.core.storages.kv.KVStore;
 import io.kestra.core.storages.kv.KVValueAndMetadata;
+import io.kestra.core.utils.ListUtils;
 import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.tekton.TektonClientSupport;
 import io.kestra.plugin.tekton.model.TektonOutput;
@@ -32,7 +34,6 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -121,7 +122,7 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
     public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext triggerContext) throws Exception {
         RunContext runContext = conditionContext.getRunContext();
         String rNamespace = runContext.render(namespace).as(String.class).orElse("default");
-        String selector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
+        String rSelector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
         int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
         if (rLimit < 1 || rLimit > 1000) {
             throw new IllegalArgumentException("limit must be between 1 and 1000");
@@ -141,9 +142,9 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
                 if (continueToken != null) {
                     optionsBuilder.withContinue(continueToken);
                 }
-                var page = selector == null || selector.isBlank()
+                var page = rSelector == null || rSelector.isBlank()
                     ? operation.list(optionsBuilder.build())
-                    : operation.withLabelSelector(selector).list(optionsBuilder.build());
+                    : operation.withLabelSelector(rSelector).list(optionsBuilder.build());
                 runs.addAll(page.getItems());
                 continueToken = page.getMetadata() == null ? null : page.getMetadata().getContinue();
             } while (continueToken != null && !continueToken.isBlank());
@@ -189,21 +190,18 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)), nextWatermark
         ), true);
         String status = status(next);
-        Map<String, Object> triggerData = Map.of(
-            "name", next.getMetadata().getName(),
-            "namespace", rNamespace,
-            "status", status,
-            "completionTime", watermark(next)
-        );
-        return Optional.of(Execution.newExecution(
-            conditionContext.getFlow(),
-            (flow, execution) -> Map.of("trigger", triggerData),
-            List.of(
+        var conditions = next.getStatus() == null ? null : next.getStatus().getConditions();
+        var startTime = next.getStatus() == null ? null : next.getStatus().getStartTime();
+        var completionTime = next.getStatus() == null ? null : next.getStatus().getCompletionTime();
+        var results = next.getStatus() == null ? null : next.getStatus().getResults();
+        TektonOutput output = TektonOutput.from(next.getMetadata(), conditions, startTime, completionTime, results);
+        Execution execution = TriggerService.generateExecution(this, conditionContext, triggerContext, output);
+        return Optional.of(execution.toBuilder()
+            .labels(ListUtils.concat(execution.getLabels(), List.of(
                 new Label("tekton.pipelinerun.name", next.getMetadata().getName()),
                 new Label("tekton.pipelinerun.status", status)
-            ),
-            Optional.of(Instant.parse(watermark(next)).atZone(ZoneOffset.UTC))
-        ));
+            )))
+            .build());
     }
 
     private boolean terminal(PipelineRun run) {

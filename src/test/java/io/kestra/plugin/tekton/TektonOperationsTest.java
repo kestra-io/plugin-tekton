@@ -221,6 +221,7 @@ class TektonOperationsTest {
 
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
         assertTrue(execution.isPresent());
+        assertEquals("run-c", execution.orElseThrow().getTrigger().getVariables().get("name"));
         assertTrue(execution.orElseThrow().getLabels().stream()
             .anyMatch(label -> label.key().equals("tekton.pipelinerun.name") && label.value().equals("run-c")));
         assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent(), "an observed run must not repeat");
@@ -343,6 +344,7 @@ class TektonOperationsTest {
         assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
         assertTrue(execution.isPresent());
+        assertEquals("new-run", execution.orElseThrow().getTrigger().getVariables().get("name"));
         assertTrue(execution.orElseThrow().getLabels().stream()
             .anyMatch(label -> label.key().equals("tekton.pipelinerun.name") && label.value().equals("new-run")));
     }

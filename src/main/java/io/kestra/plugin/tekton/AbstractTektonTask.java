@@ -65,10 +65,10 @@ public abstract class AbstractTektonTask extends Task {
     }
 
     protected Duration renderPollInterval(RunContext runContext) throws Exception {
-        Duration value = runContext.render(pollInterval).as(Duration.class).orElse(Duration.ofSeconds(5));
-        if (value.isZero() || value.isNegative()) {
+        Duration rValue = runContext.render(pollInterval).as(Duration.class).orElse(Duration.ofSeconds(5));
+        if (rValue.isZero() || rValue.isNegative()) {
             throw new IllegalArgumentException("pollInterval must be greater than PT0S");
         }
-        return value;
+        return rValue;
     }
 }

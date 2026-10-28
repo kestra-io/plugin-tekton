@@ -97,11 +97,11 @@ public abstract class AbstractTektonCreate<R extends HasMetadata> extends Abstra
     }
 
     private TektonOutput waitForCompletion(RunContext runContext, TektonClient client, String namespace, String name) throws Exception {
-        Duration waitDuration = runContext.render(waitTimeout).as(Duration.class).orElse(Duration.ofMinutes(30));
-        if (waitDuration.isZero() || waitDuration.isNegative()) {
+        Duration rWaitDuration = runContext.render(waitTimeout).as(Duration.class).orElse(Duration.ofMinutes(30));
+        if (rWaitDuration.isZero() || rWaitDuration.isNegative()) {
             throw new IllegalArgumentException("waitTimeout must be greater than PT0S");
         }
-        long deadline = System.nanoTime() + waitDuration.toNanos();
+        long deadline = System.nanoTime() + rWaitDuration.toNanos();
         while (true) {
             R current = resource(client, namespace, name).get();
             if (current == null) {
