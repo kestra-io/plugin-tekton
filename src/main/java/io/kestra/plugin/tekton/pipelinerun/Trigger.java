@@ -1,0 +1,262 @@
+package io.kestra.plugin.tekton.pipelinerun;
+
+import io.fabric8.tekton.v1.PipelineRun;
+import io.fabric8.kubernetes.api.model.ListOptionsBuilder;
+import io.kestra.core.models.Label;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.conditions.ConditionContext;
+import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.triggers.AbstractTrigger;
+import io.kestra.core.models.triggers.PollingTriggerInterface;
+import io.kestra.core.models.triggers.TriggerContext;
+import io.kestra.core.models.triggers.TriggerOutput;
+import io.kestra.core.models.triggers.TriggerService;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.storages.kv.KVMetadata;
+import io.kestra.core.storages.kv.KVStore;
+import io.kestra.core.storages.kv.KVValueAndMetadata;
+import io.kestra.core.utils.ListUtils;
+import io.kestra.plugin.kubernetes.shared.models.Connection;
+import io.kestra.plugin.tekton.TektonClientSupport;
+import io.kestra.plugin.tekton.model.TektonOutput;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+
+@SuperBuilder
+@ToString
+@EqualsAndHashCode(callSuper = true)
+@Getter
+@NoArgsConstructor
+@Schema(
+    title = "Trigger on completed Tekton PipelineRuns",
+    description = "Polls terminal PipelineRuns and stores a namespace KV Store watermark to avoid duplicate executions."
+)
+@Plugin(
+    examples = @Example(
+        title = "React when a PipelineRun finishes.",
+        full = true,
+        code = """
+            id: tekton_finished
+            namespace: company.team
+
+            triggers:
+              - id: run_finished
+                type: io.kestra.plugin.tekton.pipelinerun.Trigger
+                namespace: ci
+                labelSelector: tekton.dev/pipeline=build-and-test
+                interval: PT1M
+
+            tasks:
+              - id: log
+                type: io.kestra.plugin.core.log.Log
+                message: "PipelineRun {{ trigger.name }} ended with {{ trigger.status }}"
+            """
+    )
+)
+public class Trigger extends AbstractTrigger implements PollingTriggerInterface, TriggerOutput<TektonOutput> {
+    private static final String WATERMARK_KEY = "tekton-pipelinerun-watermark";
+
+    @Schema(title = "Polling interval")
+    @PluginProperty(group = "execution")
+    @Builder.Default
+    private final Duration interval = Duration.ofMinutes(1);
+
+    @Schema(
+        title = "PipelineRuns per page",
+        description = """
+            Number of PipelineRuns fetched per Kubernetes page. Every page is read on each poll when a continuation token is returned. Defaults to 100; must be between 1 and 1000. Use a labelSelector to keep trigger polling focused.
+            """
+    )
+    @PluginProperty(group = "advanced")
+    @Builder.Default
+    private final Property<Integer> limit = Property.ofValue(100);
+
+    @Schema(
+        title = "Kubernetes connection",
+        description = "Connection settings for the Kubernetes cluster. When omitted, Fabric8 discovers credentials from system properties, environment variables, kubeconfig, or the in-cluster service account."
+    )
+    @PluginProperty(group = "connection")
+    private Connection connection;
+
+    @Schema(
+        title = "Tekton namespace",
+        description = "Namespace where the PipelineRun is managed."
+    )
+    @PluginProperty(group = "connection")
+    @NotNull
+    @Builder.Default
+    private final Property<String> namespace = Property.ofValue("default");
+
+    @Schema(title = "Label selector", description = "Kubernetes label selector applied to PipelineRuns.")
+    @PluginProperty(group = "advanced")
+    private Property<String> labelSelector;
+
+    @Schema(
+        title = "Inherit cluster auto-configuration",
+        description = "When true, explicit connection fields override the ambient kubeconfig or in-cluster configuration."
+    )
+    @PluginProperty(group = "advanced")
+    @NotNull
+    @Builder.Default
+    private final Property<Boolean> inheritClusterConfig = Property.ofValue(true);
+
+    @Override
+    public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext triggerContext) throws Exception {
+        var runContext = conditionContext.getRunContext();
+        var rNamespace = runContext.render(namespace).as(String.class).orElse("default");
+        var rSelector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
+        var rLimit = runContext.render(limit).as(Integer.class).orElse(100);
+        if (rLimit < 1 || rLimit > 1000) {
+            throw new IllegalArgumentException("limit must be between 1 and 1000");
+        }
+        List<PipelineRun> runs;
+        if (interval.isZero() || interval.isNegative()) {
+            throw new IllegalArgumentException("interval must be greater than PT0S");
+        }
+        try (TektonClientSupport.ClientHandle client = TektonClientSupport.client(
+            connection, runContext, runContext.render(inheritClusterConfig).as(Boolean.class).orElse(true)
+        )) {
+            var operation = client.tekton().v1().pipelineRuns().inNamespace(rNamespace);
+            runs = new ArrayList<>();
+            String continueToken = null;
+            do {
+                var optionsBuilder = new ListOptionsBuilder().withLimit((long) rLimit);
+                if (continueToken != null) {
+                    optionsBuilder.withContinue(continueToken);
+                }
+                var page = rSelector == null || rSelector.isBlank()
+                    ? operation.list(optionsBuilder.build())
+                    : operation.withLabelSelector(rSelector).list(optionsBuilder.build());
+                runs.addAll(page.getItems());
+                continueToken = page.getMetadata() == null ? null : page.getMetadata().getContinue();
+            } while (continueToken != null && !continueToken.isBlank());
+        }
+
+        var terminalRuns = runs.stream()
+            .filter(this::terminal)
+            .sorted(Comparator.comparing((PipelineRun run) -> Instant.parse(watermark(run)))
+                .thenComparing(run -> run.getMetadata().getName()))
+            .toList();
+
+        var watermarkKey = watermarkKey(triggerContext, runContext);
+        var store = runContext.namespaceKv(runContext.flowInfo().namespace());
+        var storedWatermark = read(store, watermarkKey);
+        if (storedWatermark.isEmpty()) {
+            var latest = terminalRuns.isEmpty() ? null : terminalRuns.getLast();
+            if (latest != null) {
+                put(store, watermarkKey, latest);
+            } else {
+                store.put(
+                    watermarkKey,
+                    new KVValueAndMetadata(
+                        new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)),
+                        new Watermark(null, "1970-01-01T00:00:00Z")
+                    ),
+                    true
+                );
+            }
+            return Optional.empty();
+        }
+
+        var watermark = storedWatermark.get();
+        var next = terminalRuns.stream()
+            .filter(run -> newerThan(run, watermark))
+            .findFirst()
+            .orElse(null);
+        if (next == null) {
+            return Optional.empty();
+        }
+
+        var nextWatermark = new Watermark(next.getMetadata().getName(), watermark(next));
+        store.put(watermarkKey, new KVValueAndMetadata(
+            new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)), nextWatermark
+        ), true);
+        var status = status(next);
+        var conditions = next.getStatus() == null ? null : next.getStatus().getConditions();
+        var startTime = next.getStatus() == null ? null : next.getStatus().getStartTime();
+        var completionTime = next.getStatus() == null ? null : next.getStatus().getCompletionTime();
+        var results = next.getStatus() == null ? null : next.getStatus().getResults();
+        var output = TektonOutput.from(next.getMetadata(), conditions, startTime, completionTime, results);
+        var execution = TriggerService.generateExecution(this, conditionContext, triggerContext, output);
+        return Optional.of(execution.toBuilder()
+            .labels(ListUtils.concat(execution.getLabels(), List.of(
+                new Label("tekton.pipelinerun.name", next.getMetadata().getName()),
+                new Label("tekton.pipelinerun.status", status)
+            )))
+            .build());
+    }
+
+    private boolean terminal(PipelineRun run) {
+        return TektonClientSupport.terminal(status(run));
+    }
+
+    private String status(PipelineRun run) {
+        return TektonClientSupport.conditionStatus(run.getStatus() == null ? null : run.getStatus().getConditions());
+    }
+
+    private String watermark(PipelineRun run) {
+        if (run.getStatus() != null && run.getStatus().getCompletionTime() != null) {
+            return run.getStatus().getCompletionTime();
+        }
+        return run.getMetadata().getCreationTimestamp();
+    }
+
+    private Optional<Watermark> read(KVStore store, String key) throws Exception {
+        return store.getValue(key)
+            .map(value -> JacksonMapper.ofJson().convertValue(value.value(), Watermark.class));
+    }
+
+    private void put(KVStore store, String key, PipelineRun run) throws Exception {
+        store.put(
+            key,
+            new KVValueAndMetadata(
+                new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)),
+                new Watermark(run.getMetadata().getName(), watermark(run))
+            ),
+            true
+        );
+    }
+
+    private String watermarkKey(TriggerContext triggerContext, RunContext runContext) {
+        String triggerId = triggerContext.getTriggerId() != null ? triggerContext.getTriggerId() : getId();
+        String flowId = triggerContext.getFlowId();
+        if (flowId == null) {
+            flowId = runContext.flowInfo().id();
+        }
+        String rFlowId = flowId == null ? "default" : flowId;
+        String rTriggerId = triggerId == null ? "default" : triggerId;
+        return "%s-%d-%s-%d-%s".formatted(
+            WATERMARK_KEY,
+            rFlowId.length(),
+            rFlowId,
+            rTriggerId.length(),
+            rTriggerId
+        );
+    }
+
+    private boolean newerThan(PipelineRun run, Watermark watermark) {
+        return Instant.parse(watermark(run)).isAfter(Instant.parse(watermark.time()))
+            || (Instant.parse(watermark(run)).equals(Instant.parse(watermark.time()))
+            && run.getMetadata().getName().compareTo(Optional.ofNullable(watermark.name()).orElse("")) > 0);
+    }
+
+    private record Watermark(String name, String time) {
+    }
+}

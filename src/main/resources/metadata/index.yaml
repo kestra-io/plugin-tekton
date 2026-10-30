@@ -1,8 +1,8 @@
 group: io.kestra.plugin.tekton
 name: "tekton"
 title: "Tekton"
-description: "Tekton plugin for Kestra"
-body: ""
+description: "Orchestrate Tekton PipelineRuns and TaskRuns from Kestra"
+body: "Run, inspect, cancel, and trigger Tekton resources through Kubernetes."
 videos: []
 createdBy: "Kestra Core Team"
 managedBy: "Kestra Core Team"

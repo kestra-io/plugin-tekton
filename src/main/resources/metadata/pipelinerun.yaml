@@ -1,0 +1,8 @@
+group: io.kestra.plugin.tekton.pipelinerun
+name: "pipelinerun"
+title: "Tekton PipelineRun"
+description: "Create, inspect, list, cancel, and trigger Tekton PipelineRuns."
+body: "Run Tekton pipelines from Kestra and react to their terminal outcomes."
+videos: []
+createdBy: "Kestra Core Team"
+managedBy: "Kestra Core Team"

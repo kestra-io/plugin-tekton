@@ -1,16 +1,27 @@
-This is the Kestra plugin template. Use it as a starting point for building a new plugin.
+# How to use the Tekton plugin
 
-## What this template ships
+Connect Kestra to Tekton Pipelines installed on Kubernetes and orchestrate PipelineRuns and TaskRuns from a flow.
 
-- `Example` is a sample `RunnableTask` that reverses an input string.
-- `Trigger` is a sample polling trigger that fires an execution at random.
+## Authentication
 
-## How to build your plugin
+Tasks and triggers accept a `connection` object. Fabric8 can use the current kubeconfig or in-cluster service account automatically. For explicit authentication, provide `masterUrl`, `oauthToken`, and optionally `caCertData`. Store credentials in [Kestra secrets](https://kestra.io/docs/concepts/secret) and reference them with `{{ secret('K8S_TOKEN') }}`.
 
-1. Rename the package `io.kestra.plugin.tekton` to your own, for example `io.kestra.plugin.myservice`.
-2. Update `group`, `name`, `title`, and `description` in `src/main/resources/metadata/index.yaml`.
-3. Replace `src/main/resources/icons/plugin-icon.svg` with your service's icon.
-4. Replace the `Example` and `Trigger` classes with your real tasks and triggers.
-5. Replace this how-to with documentation for your plugin.
+## Tasks
 
-Run `./gradlew lintPluginDocs` before pushing to validate the plugin documentation.
+### PipelineRuns
+
+Use `pipelinerun.Create` to create a run from `pipelineRef` or an inline `spec`, with `params`, `workspaces`, and `serviceAccountName`. Set `wait: true` to poll the Tekton `Succeeded` condition. A `False` condition fails the Kestra task; `waitTimeout` limits how long it waits and cancels the run if the timeout expires. `Get`, `List`, and `Cancel` read, filter, and cancel runs.
+
+### TaskRuns
+
+Use `taskrun.Create` and `taskrun.Get` for single Tekton Tasks. `Create` supports `taskRef`, inline `spec`, parameters, workspace bindings, optional waiting, `waitTimeout`, and cancellation when the Kestra execution is killed.
+
+## Triggers
+
+### PipelineRun trigger
+
+`pipelinerun.Trigger` polls terminal PipelineRuns selected by `labelSelector`. Each poll is bounded by `limit` (100 by default); use a focused label selector for busy namespaces. It stores the last emitted run name and completion time in the namespace KV Store, so repeated polls do not emit the same run twice. The trigger exposes the run name, namespace, status, and completion time to the execution.
+
+## Cluster requirements
+
+The target cluster must expose the Tekton `tekton.dev/v1` API. The plugin does not install Tekton or create Kubernetes namespaces.

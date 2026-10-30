@@ -1,0 +1,8 @@
+group: io.kestra.plugin.tekton.taskrun
+name: "taskrun"
+title: "Tekton TaskRun"
+description: "Create and inspect Tekton TaskRuns."
+body: "Run a single Tekton Task from Kestra and reuse its status and results."
+videos: []
+createdBy: "Kestra Core Team"
+managedBy: "Kestra Core Team"
