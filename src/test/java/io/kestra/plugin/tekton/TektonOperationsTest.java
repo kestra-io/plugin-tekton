@@ -7,6 +7,7 @@ import io.kestra.core.models.conditions.ConditionContext;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.triggers.TriggerContext;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.kubernetes.shared.models.Connection;
 import io.kestra.plugin.tekton.model.TektonOutput;
@@ -201,21 +202,18 @@ class TektonOperationsTest {
         server.expect().get().withPath(path + "?limit=100").andReturn(200, secondPoll).once();
 
         String flowId = "ordering-" + UUID.randomUUID();
-        Flow flow = Flow.builder().id(flowId).namespace("team").build();
+        Flow flow = Flow.builder().id(flowId).namespace("team").tenantId("main").revision(1).build();
         Trigger trigger = Trigger.builder()
             .id("finished")
+            .type(Trigger.class.getName())
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
-        RunContext runContext = runContextFactory.of("team", flowId);
-        ConditionContext conditionContext = ConditionContext.builder()
-            .flow(flow)
-            .runContext(runContext)
-            .build();
-        TriggerContext triggerContext = TriggerContext.builder()
+        TriggerContext triggerContext = TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(flowId)
             .triggerId("finished")
             .build();
+        var conditionContext = conditionContext(flow, trigger, triggerContext);
 
         assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent(), "history must be checkpointed");
 
@@ -237,25 +235,25 @@ class TektonOperationsTest {
 
         Trigger trigger = Trigger.builder()
             .id("finished")
+            .type(Trigger.class.getName())
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
         String prefix = UUID.randomUUID().toString();
         String firstFlowId = prefix + "-a-b";
         String secondFlowId = prefix + "-a";
-        RunContext runContext = runContextFactory.of("team", firstFlowId);
-        ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id(firstFlowId).namespace("team").build())
-            .runContext(runContext)
-            .build();
+        var firstFlow = Flow.builder().id(firstFlowId).namespace("team").tenantId("main").revision(1).build();
+        var conditionContext = conditionContext(
+            firstFlow, trigger, TriggerContext.builder().namespace("team").tenantId("main").flowId(firstFlowId).triggerId("c").build()
+        );
 
-        assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder()
+        assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(firstFlowId).triggerId("c").build()).isPresent());
-        assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder()
+        assertFalse(trigger.evaluate(conditionContext, TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(secondFlowId).triggerId("b-c").build()).isPresent());
-        assertTrue(trigger.evaluate(conditionContext, TriggerContext.builder()
+        assertTrue(trigger.evaluate(conditionContext, TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(firstFlowId).triggerId("c").build()).isPresent());
-        assertTrue(trigger.evaluate(conditionContext, TriggerContext.builder()
+        assertTrue(trigger.evaluate(conditionContext, TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(secondFlowId).triggerId("b-c").build()).isPresent());
     }
 
@@ -268,17 +266,15 @@ class TektonOperationsTest {
 
         Trigger trigger = Trigger.builder()
             .id("finished")
+            .type(Trigger.class.getName())
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
         String flowId = "empty-" + UUID.randomUUID();
-        RunContext runContext = runContextFactory.of("team", flowId);
-        ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id(flowId).namespace("team").build())
-            .runContext(runContext)
-            .build();
-        TriggerContext triggerContext = TriggerContext.builder()
+        var flow = Flow.builder().id(flowId).namespace("team").tenantId("main").revision(1).build();
+        TriggerContext triggerContext = TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(flowId).triggerId("finished").build();
+        var conditionContext = conditionContext(flow, trigger, triggerContext);
 
         assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
@@ -292,6 +288,7 @@ class TektonOperationsTest {
         String flowId = "invalid-limit-" + UUID.randomUUID();
         Trigger trigger = Trigger.builder()
             .id("finished")
+            .type(Trigger.class.getName())
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .limit(Property.ofValue(1001))
@@ -304,7 +301,7 @@ class TektonOperationsTest {
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> trigger.evaluate(
             conditionContext,
-            TriggerContext.builder().flowId(flowId).triggerId("finished").build()
+            TriggerContext.builder().namespace("team").tenantId("main").flowId(flowId).triggerId("finished").build()
         ));
 
         assertEquals("limit must be between 1 and 1000", exception.getMessage());
@@ -329,17 +326,15 @@ class TektonOperationsTest {
 
         Trigger trigger = Trigger.builder()
             .id("finished")
+            .type(Trigger.class.getName())
             .connection(connection)
             .namespace(Property.ofValue("ci"))
             .build();
         String flowId = "pagination-" + UUID.randomUUID();
-        RunContext runContext = runContextFactory.of("team", flowId);
-        ConditionContext conditionContext = ConditionContext.builder()
-            .flow(Flow.builder().id(flowId).namespace("team").build())
-            .runContext(runContext)
-            .build();
-        TriggerContext triggerContext = TriggerContext.builder()
+        var flow = Flow.builder().id(flowId).namespace("team").tenantId("main").revision(1).build();
+        TriggerContext triggerContext = TriggerContext.builder().namespace("team").tenantId("main")
             .flowId(flowId).triggerId("finished").build();
+        var conditionContext = conditionContext(flow, trigger, triggerContext);
 
         assertFalse(trigger.evaluate(conditionContext, triggerContext).isPresent());
         Optional<io.kestra.core.models.executions.Execution> execution = trigger.evaluate(conditionContext, triggerContext);
@@ -347,6 +342,12 @@ class TektonOperationsTest {
         assertEquals("new-run", execution.orElseThrow().getTrigger().getVariables().get("name"));
         assertTrue(execution.orElseThrow().getLabels().stream()
             .anyMatch(label -> label.key().equals("tekton.pipelinerun.name") && label.value().equals("new-run")));
+    }
+
+    private ConditionContext conditionContext(Flow flow, Trigger trigger, TriggerContext triggerContext) {
+        var runContext = runContextFactory.initializer()
+            .forScheduler((DefaultRunContext) runContextFactory.of(flow, trigger), triggerContext, trigger);
+        return ConditionContext.builder().flow(flow).runContext(runContext).build();
     }
 
     private RunContext runContext() {

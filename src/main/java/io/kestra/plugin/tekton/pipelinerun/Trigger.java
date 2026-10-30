@@ -37,7 +37,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 @SuperBuilder
@@ -120,10 +119,10 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
 
     @Override
     public Optional<Execution> evaluate(ConditionContext conditionContext, TriggerContext triggerContext) throws Exception {
-        RunContext runContext = conditionContext.getRunContext();
-        String rNamespace = runContext.render(namespace).as(String.class).orElse("default");
-        String rSelector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
-        int rLimit = runContext.render(limit).as(Integer.class).orElse(100);
+        var runContext = conditionContext.getRunContext();
+        var rNamespace = runContext.render(namespace).as(String.class).orElse("default");
+        var rSelector = labelSelector == null ? null : runContext.render(labelSelector).as(String.class).orElse(null);
+        var rLimit = runContext.render(limit).as(Integer.class).orElse(100);
         if (rLimit < 1 || rLimit > 1000) {
             throw new IllegalArgumentException("limit must be between 1 and 1000");
         }
@@ -150,17 +149,17 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             } while (continueToken != null && !continueToken.isBlank());
         }
 
-        List<PipelineRun> terminalRuns = runs.stream()
+        var terminalRuns = runs.stream()
             .filter(this::terminal)
             .sorted(Comparator.comparing((PipelineRun run) -> Instant.parse(watermark(run)))
                 .thenComparing(run -> run.getMetadata().getName()))
             .toList();
 
-        String watermarkKey = watermarkKey(triggerContext, runContext);
-        KVStore store = runContext.namespaceKv(runContext.flowInfo().namespace());
-        Optional<Watermark> storedWatermark = read(store, watermarkKey);
+        var watermarkKey = watermarkKey(triggerContext, runContext);
+        var store = runContext.namespaceKv(runContext.flowInfo().namespace());
+        var storedWatermark = read(store, watermarkKey);
         if (storedWatermark.isEmpty()) {
-            PipelineRun latest = terminalRuns.isEmpty() ? null : terminalRuns.getLast();
+            var latest = terminalRuns.isEmpty() ? null : terminalRuns.getLast();
             if (latest != null) {
                 put(store, watermarkKey, latest);
             } else {
@@ -176,8 +175,8 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             return Optional.empty();
         }
 
-        Watermark watermark = storedWatermark.get();
-        PipelineRun next = terminalRuns.stream()
+        var watermark = storedWatermark.get();
+        var next = terminalRuns.stream()
             .filter(run -> newerThan(run, watermark))
             .findFirst()
             .orElse(null);
@@ -185,17 +184,17 @@ public class Trigger extends AbstractTrigger implements PollingTriggerInterface,
             return Optional.empty();
         }
 
-        Watermark nextWatermark = new Watermark(next.getMetadata().getName(), watermark(next));
+        var nextWatermark = new Watermark(next.getMetadata().getName(), watermark(next));
         store.put(watermarkKey, new KVValueAndMetadata(
             new KVMetadata("Last Tekton PipelineRun observed by this trigger", Duration.ofDays(3650)), nextWatermark
         ), true);
-        String status = status(next);
+        var status = status(next);
         var conditions = next.getStatus() == null ? null : next.getStatus().getConditions();
         var startTime = next.getStatus() == null ? null : next.getStatus().getStartTime();
         var completionTime = next.getStatus() == null ? null : next.getStatus().getCompletionTime();
         var results = next.getStatus() == null ? null : next.getStatus().getResults();
-        TektonOutput output = TektonOutput.from(next.getMetadata(), conditions, startTime, completionTime, results);
-        Execution execution = TriggerService.generateExecution(this, conditionContext, triggerContext, output);
+        var output = TektonOutput.from(next.getMetadata(), conditions, startTime, completionTime, results);
+        var execution = TriggerService.generateExecution(this, conditionContext, triggerContext, output);
         return Optional.of(execution.toBuilder()
             .labels(ListUtils.concat(execution.getLabels(), List.of(
                 new Label("tekton.pipelinerun.name", next.getMetadata().getName()),
