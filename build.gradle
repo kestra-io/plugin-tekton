@@ -52,7 +52,7 @@ dependencies {
 
     // Kubernetes and Tekton
     implementation "io.kestra.plugin:plugin-kubernetes-lib:1.2.4"
-    implementation "io.fabric8:tekton-client:7.9.0"
+    implementation "io.fabric8:tekton-client:8.0.0"
 }
 
 
