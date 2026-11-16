@@ -51,7 +51,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "script", version: kestraVersion
 
     // Kubernetes and Tekton
-    implementation "io.kestra.plugin:plugin-kubernetes-lib:1.2.4"
+    implementation "io.kestra.plugin:plugin-kubernetes-lib:1.2.5"
     implementation "io.fabric8:tekton-client:7.9.0"
 }
 
