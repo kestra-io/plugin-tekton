@@ -91,7 +91,7 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter-engine"
     testImplementation "org.hamcrest:hamcrest"
     testImplementation "org.hamcrest:hamcrest-library"
-    testImplementation "io.fabric8:kubernetes-server-mock:7.9.0"
+    testImplementation "io.fabric8:kubernetes-server-mock:8.0.0"
 }
 
 /**********************************************************************************************************************\
